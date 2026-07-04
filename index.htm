@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -444,7 +443,11 @@
 
   @media (max-width: 900px){
     :root{
-      --mb-height: 108px;
+      /* Default bottom-pane height on mobile. Deliberately compact — shows
+         one row of controls + the category switcher. The user can drag the
+         pill at the top of the pane to make it bigger (up to 90vh) or
+         double-tap the pill to reset. */
+      --mb-height: 34vh;
       --topbar-height: 46px;
     }
     #app{
@@ -592,16 +595,23 @@
       height: calc(100dvh - var(--mb-height) - var(--topbar-height) - 8px);
       max-height: calc(100dvh - var(--mb-height) - var(--topbar-height) - 8px);
       overflow:hidden;
+      /* Always center; do not scroll on mobile so portrait pics scale down cleanly. */
+      overflow: hidden;
     }
     #canvas-wrap{
       max-width:100%;
       max-height:100%;
-      display:flex; align-items:center; justify-content:center;
+      /* portrait images: keep aspect ratio while fitting inside the available box */
+      width:auto; height:auto;
+      display:block;
+      /* becomes block for layout, JS controls exact sizing */
     }
     #canvas{
+      display:block;
       max-width: 100%;
       max-height: 100%;
       width:auto; height:auto;
+      /* object-fit doesn't apply to canvas painting, but keeping for scaled bitmap sharpness in some browsers */
       object-fit: contain;
     }
 
@@ -617,7 +627,9 @@
       padding: 5px 8px 6px;
       padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
       gap:5px;
-      max-height:56vh;
+      height: var(--mb-height);
+      max-height: 90vh;
+      min-height: 90px;
       box-shadow:0 -8px 24px rgba(0,0,0,.35);
     }
     #mobile-bar.compact .mb-content{ display:none; }
@@ -682,7 +694,11 @@
 
     .mb-content{
       overflow-y:auto;
-      max-height:45vh;
+      /* Fill whatever space is left inside the (user-resizable) bottom bar
+         after the category row + drag pill. No fixed vh cap here — the bar
+         itself is capped, and the drag pill controls the total height. */
+      flex:1 1 auto;
+      min-height:0;
       padding-right:4px;
     }
     .mb-content:empty{ display:none; }
@@ -879,6 +895,161 @@
     background:rgba(77,150,255,.15);
     color:var(--accent); border-color:var(--accent);
   }
+
+  /* ---------- Filter/Effect strength popover ---------- */
+  .fx-item{
+    position:relative;
+    display:flex; align-items:stretch;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    /* NB: no overflow:hidden here — the strength popover is absolutely
+       positioned and would otherwise be clipped by the item's border box. */
+  }
+  .fx-item .fx-main{
+    flex:1; min-width:0;
+    background:transparent;
+    border:none;
+    color:var(--text);
+    padding:8px 6px;
+    font-size:12px;
+    text-align:center;
+    cursor:pointer;
+    white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+  }
+  .fx-item .fx-main:hover{ background:var(--panel-3); }
+  .fx-item .fx-more{
+    width:22px; flex-shrink:0;
+    background:var(--panel-3);
+    border:none;
+    border-left:1px solid var(--border);
+    color:var(--muted);
+    display:grid; place-items:center;
+    cursor:pointer;
+  }
+  .fx-item .fx-more:hover{ color:var(--text); background:#5a5a5a; }
+  .fx-item .fx-more svg{ width:10px; height:10px; }
+  .fx-item.has-strength .fx-more{ color:var(--accent); }
+  .fx-pop{
+    /* Fixed positioning escapes any scroll-container clip (sidebar .content
+       has overflow-y:auto which used to cut this popover off on desktop). */
+    position:fixed;
+    min-width:220px;
+    max-width:min(280px, calc(100vw - 12px));
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:10px 12px;
+    box-shadow:var(--shadow);
+    z-index:9000;
+    display:none;
+  }
+  .fx-pop.open{ display:block; }
+  .fx-pop-hint{
+    font-size:10px;
+    color:var(--muted);
+    margin-top:2px;
+    text-align:center;
+    letter-spacing:.2px;
+  }
+  .fx-pop label{
+    display:flex; justify-content:space-between;
+    font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;
+    margin-bottom:4px;
+  }
+  .fx-pop input[type=range]{ width:100%; margin:0; }
+  .fx-pop .fx-actions{ display:flex; gap:5px; margin-top:6px; }
+  .fx-pop .fx-actions button{
+    flex:1; padding:5px 6px; font-size:11px;
+    background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; cursor:pointer;
+  }
+  .fx-pop .fx-actions button.primary{ background:var(--accent); border-color:transparent; color:#fff; }
+
+  /* ---------- Mobile top bar search ---------- */
+  .mtb-search-btn{
+    width:34px; height:34px;
+    border-radius:8px;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    display:none;
+    place-items:center;
+    flex-shrink:0;
+  }
+  .mtb-search-btn.active{
+    background:rgba(77,150,255,.2);
+    color:var(--accent); border-color:rgba(77,150,255,.4);
+  }
+  .mtb-search-btn svg{ width:15px; height:15px; }
+  .mtb-search-box{
+    display:none;
+    flex:1; min-width:0;
+    align-items:center; gap:6px;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:5px 8px;
+    height:32px;
+    margin: 0 6px;
+  }
+  .mtb-search-box.open{ display:flex; }
+  .mtb-search-box svg{ width:13px; height:13px; color:var(--muted); flex-shrink:0; }
+  .mtb-search-box input{
+    flex:1; min-width:0;
+    background:transparent; border:none; outline:none;
+    color:var(--text); font-size:13px;
+  }
+  .mtb-search-box .mtb-search-close{
+    background:transparent; border:none; color:var(--muted); cursor:pointer;
+    padding:2px; display:grid; place-items:center;
+  }
+  .mtb-search-box .mtb-search-close svg{ width:12px; height:12px; }
+
+  @media (max-width: 900px){
+    .mtb-search-btn{ display:grid; }
+  }
+
+  /* ---------- Mobile bottom-pane drag pill ---------- */
+  .mb-drag-pill{
+    display:none;
+  }
+  @media (max-width: 900px){
+    .mb-drag-pill{
+      display:flex;
+      align-items:center; justify-content:center;
+      position: sticky; top: 0;
+      margin: -3px auto 3px;
+      width: 100%;
+      height: 18px;
+      background: var(--panel);
+      cursor: ns-resize;
+      touch-action: none;
+      z-index: 5;
+    }
+    .mb-drag-pill::before{
+      content:'';
+      display:block;
+      width: 44px; height: 4px;
+      border-radius: 3px;
+      background: var(--panel-3);
+      transition: background .15s;
+    }
+    .mb-drag-pill:hover::before,
+    .mb-drag-pill.dragging::before{
+      background: var(--accent);
+      height: 5px;
+    }
+    #mobile-bar{
+      max-height: 90vh;
+    }
+    #mobile-bar .mb-content{
+      max-height: none;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+  }
 </style>
 </head>
 <body>
@@ -941,6 +1112,16 @@
       </button>
       <button data-action="new" aria-label="New">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+    <button class="mtb-search-btn" id="mtb-search-btn" aria-label="Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <div class="mtb-search-box" id="mtb-search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="mtb-search-input" type="text" placeholder="Search tools, filters..." />
+      <button class="mtb-search-close" id="mtb-search-close" aria-label="Close search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="mtb-cat" id="mtb-cat">
@@ -1019,6 +1200,7 @@
     </div>
   </div>
 
+  <div class="mb-drag-pill" id="mb-drag-pill" aria-label="Resize bottom pane" role="separator"></div>
   <div class="mb-content" id="mb-content"></div>
   <div class="mb-crop-strip" id="mb-crop-strip" style="display:none;"></div>
 </div>
@@ -1192,7 +1374,15 @@ const state = {
     temperature:0, tint:0, vibrance:0, sharpen:0, blur:0, noise:0, vignette:0,
   },
   filter: 'none',
-  brush: { color:'#ff4b6e', size:12, opacity:100, hardness:80, type:'round' },
+  brush: { color:'#ff4b6e', size:12, opacity:100, hardness:80, type:'round', grad:null },
+  /* Eraser mode:
+     - eraseAll=false (default): only erase brushstrokes painted after the
+       eraser session began; the underlying image / baked text / baked shapes
+       are restored from a snapshot taken at stroke start.
+     - eraseAll=true: destination-out — wipes to transparency, cutting through
+       every layer (image, brushstrokes, baked text/shapes). */
+  eraser: { eraseAll:false },
+  _paintBase: null,   // ImageData snapshot from the start of the current stroke
   drawing:false,
   lastPt:null,
 
@@ -1354,12 +1544,42 @@ function loadDataUrlToCanvas(dataUrl, resetOriginal=false){
 
 function showCanvas(){ emptyState.classList.add('hidden'); canvasWrap.classList.remove('hidden'); }
 function fitCanvasCss(){
+  /* On mobile, explicitly scale the canvas so portrait images (tall) always fit
+     within the visible canvas area, and landscape images fit within the width.
+     We keep aspect ratio; we never up-scale beyond 100% of intrinsic pixels. */
+  const area = document.getElementById('canvas-area');
+  if(area && state.img && window.matchMedia('(max-width: 900px)').matches){
+    const style = getComputedStyle(area);
+    const padX = (parseFloat(style.paddingLeft)||0) + (parseFloat(style.paddingRight)||0);
+    const padY = (parseFloat(style.paddingTop) ||0) + (parseFloat(style.paddingBottom)||0);
+    const availW = Math.max(50, area.clientWidth  - padX);
+    const availH = Math.max(50, area.clientHeight - padY);
+    const iw = canvas.width, ih = canvas.height;
+    /* Scale so the whole canvas fits, allowing tiny upscale (up to 1.05x) for
+       portraits so they don't look aggressively shrunk. */
+    const scale = Math.min(availW / iw, availH / ih, 1.05);
+    const cw = Math.max(1, Math.floor(iw * scale));
+    const ch = Math.max(1, Math.floor(ih * scale));
+    canvas.style.width  = cw + 'px';
+    canvas.style.height = ch + 'px';
+    if(canvasWrap){
+      canvasWrap.style.width  = cw + 'px';
+      canvasWrap.style.height = ch + 'px';
+    }
+  } else if(canvas && state.img){
+    /* Desktop: let CSS max-width/height do its thing but clear any inline
+       sizes left over from a previous mobile session. */
+    canvas.style.width = '';
+    canvas.style.height = '';
+    if(canvasWrap){ canvasWrap.style.width=''; canvasWrap.style.height=''; }
+  }
   overlay.style.width = canvas.clientWidth + 'px';
   overlay.style.height = canvas.clientHeight + 'px';
   overlay.style.position='absolute'; overlay.style.left='0'; overlay.style.top='0';
   drawOverlay();
 }
 window.addEventListener('resize', ()=>{ fitCanvasCss(); });
+window.addEventListener('orientationchange', ()=>{ setTimeout(fitCanvasCss, 120); });
 
 /* ========================================================================
    FILE ACTIONS
@@ -1523,12 +1743,43 @@ function doVignette(amount){
 /* ========================================================================
    FILTERS
    ======================================================================== */
-function applyFilterPreset(id){
+/* Per-filter strength setting (0.0 - 2.0). 1.0 = normal. */
+const _fxStrength = { filter:{}, effect:{} };
+function getFxStrength(kind,id){ const v=(_fxStrength[kind]||{})[id]; return (v===undefined) ? 1 : v; }
+function setFxStrength(kind,id,v){ (_fxStrength[kind]=_fxStrength[kind]||{})[id] = Math.max(0, Math.min(10, +v||0)); }
+
+function applyFilterPreset(id, strengthOverride){
   if(!state.img) return;
-  if(id==='none'){ if(state.originalDataUrl){ pushHistory(); loadDataUrlToCanvas(state.originalDataUrl,false);} return; }
+  if(id==='none'){
+    /* "Original" here means: strip filters/effects only — do NOT throw away
+       brushstrokes, text or shapes the user has added. We keep a snapshot of
+       the canvas as it was BEFORE the first filter/effect in the current
+       filter session; clicking Original rolls back to that snapshot, then
+       clears the session so the next filter starts a fresh one. If nothing
+       has been filtered yet, there is nothing to do. */
+    if(state.preFilterSnapshot){
+      pushHistory();
+      const snap = state.preFilterSnapshot;
+      state.preFilterSnapshot = null;
+      loadDataUrlToCanvas(snap, false);
+    }
+    /* Also reset every filter's strength slider back to 1.0 so the UI matches. */
+    _fxStrength.filter = {};
+    _fxStrength.effect = {};
+    if(typeof renderContent === 'function') renderContent();
+    return;
+  }
+  const strength = (strengthOverride===undefined) ? getFxStrength('filter',id) : strengthOverride;
+  /* Take a pre-filter snapshot the first time a filter is applied after the
+     last "Original" click (or since the image was loaded). */
+  if(!state.preFilterSnapshot){
+    try { state.preFilterSnapshot = canvas.toDataURL('image/png'); } catch(_e){}
+  }
   pushHistory();
   const w=canvas.width,h=canvas.height;
-  const imgd=ctx.getImageData(0,0,w,h), d=imgd.data;
+  /* Snapshot for blending with strength. */
+  const src = ctx.getImageData(0,0,w,h);
+  const imgd = ctx.getImageData(0,0,w,h), d=imgd.data;
   const ops=getFilterOps(id);
   applyAdjustments(imgd, ops.adjustments||{});
   if(ops.tone){ const [tr,tg,tb,ta]=ops.tone;
@@ -1539,6 +1790,15 @@ function applyFilterPreset(id){
       if(ops.builtin==='grayscale'){ const gr=0.299*r+0.587*g+0.114*b; d[i]=d[i+1]=d[i+2]=gr; }
       else if(ops.builtin==='sepia'){ d[i]=clamp(r*.393+g*.769+b*.189); d[i+1]=clamp(r*.349+g*.686+b*.168); d[i+2]=clamp(r*.272+g*.534+b*.131); }
       else if(ops.builtin==='invert'){ d[i]=255-r; d[i+1]=255-g; d[i+2]=255-b; }
+    }
+  }
+  /* Blend with strength: strength=1 -> full filter, 0 -> original, 2 -> extrapolated. */
+  if(strength !== 1){
+    const s = src.data, o = d, S = strength;
+    for(let i=0;i<o.length;i+=4){
+      o[i]   = clamp(s[i]   + (o[i]   - s[i]  ) * S);
+      o[i+1] = clamp(s[i+1] + (o[i+1] - s[i+1]) * S);
+      o[i+2] = clamp(s[i+2] + (o[i+2] - s[i+2]) * S);
     }
   }
   ctx.putImageData(imgd,0,0);
@@ -1574,10 +1834,18 @@ function getFilterOps(id){
 /* ========================================================================
    EFFECTS
    ======================================================================== */
-function applyEffect(id, params={}){
+function applyEffect(id, params={}, strengthOverride){
   if(!state.img) return;
+  const strength = (strengthOverride===undefined) ? getFxStrength('effect',id) : strengthOverride;
+  /* Effects are part of the same "filter session" as filters, so "Original"
+     can undo them together. Snapshot once at the start of the session. */
+  if(!state.preFilterSnapshot){
+    try { state.preFilterSnapshot = canvas.toDataURL('image/png'); } catch(_e){}
+  }
   pushHistory();
   const w=canvas.width,h=canvas.height;
+  /* Snapshot for strength-based blending. */
+  const _fxSrc = ctx.getImageData(0,0,w,h);
   const fn = {
     pixelate:()=>{ const size=params.size||12; const off=document.createElement('canvas');
       off.width=Math.max(1,Math.floor(w/size)); off.height=Math.max(1,Math.floor(h/size));
@@ -1623,6 +1891,63 @@ function applyEffect(id, params={}){
       ctx.save(); ctx.globalAlpha=0.12; ctx.fillStyle='#000'; for(let y=0;y<h;y+=3)ctx.fillRect(0,y,w,1); ctx.restore(); },
   }[id];
   if(fn) fn();
+  /* Blend effect result with original snapshot using strength (0..2). */
+  if(strength !== 1){
+    const cur = ctx.getImageData(0,0,w,h), o = cur.data, s = _fxSrc.data, S = strength;
+    for(let i=0;i<o.length;i+=4){
+      o[i]   = clamp(s[i]   + (o[i]   - s[i]  ) * S);
+      o[i+1] = clamp(s[i+1] + (o[i+1] - s[i+1]) * S);
+      o[i+2] = clamp(s[i+2] + (o[i+2] - s[i+2]) * S);
+    }
+    ctx.putImageData(cur,0,0);
+  }
+}
+
+/* ========================================================================
+   CUSTOM COLOR FILTER (solid + gradient blend, with intensity)
+   ======================================================================== */
+function applyCustomColorFilter(opts){
+  /* opts: { color?, grad?, intensity(0..1), blend('normal'|'multiply'|'screen'|'overlay'|'softlight'|'color') } */
+  if(!state.img) return;
+  pushHistory();
+  const w=canvas.width, h=canvas.height;
+  const intensity = Math.max(0, Math.min(1, opts.intensity ?? 0.5));
+
+  /* Build the color layer on a temp canvas (either solid or gradient). */
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const tc = tmp.getContext('2d');
+  if(opts.grad){
+    const g = opts.grad;
+    let grad;
+    if(g.type === 'radial'){
+      grad = tc.createRadialGradient(w/2, h/2, Math.min(w,h)*0.05, w/2, h/2, Math.max(w,h)*0.75);
+    } else {
+      const ang = ((g.angle||0)-90) * Math.PI/180;
+      const cx = w/2, cy = h/2, len = Math.max(w,h);
+      grad = tc.createLinearGradient(cx - Math.cos(ang)*len/2, cy - Math.sin(ang)*len/2,
+                                     cx + Math.cos(ang)*len/2, cy + Math.sin(ang)*len/2);
+    }
+    grad.addColorStop(0, g.c1);
+    grad.addColorStop(1, g.c2);
+    tc.fillStyle = grad;
+  } else {
+    tc.fillStyle = opts.color || '#4d96ff';
+  }
+  tc.fillRect(0,0,w,h);
+
+  /* Composite the color layer onto the canvas with chosen blend + intensity. */
+  const blend = opts.blend || 'overlay';
+  ctx.save();
+  ctx.globalAlpha = intensity;
+  const modeMap = {
+    normal:'source-over', multiply:'multiply', screen:'screen',
+    overlay:'overlay', softlight:'soft-light', color:'color',
+    'soft-light':'soft-light'
+  };
+  ctx.globalCompositeOperation = modeMap[blend] || 'overlay';
+  ctx.drawImage(tmp, 0, 0);
+  ctx.restore();
 }
 function convolve(k){
   const w=canvas.width,h=canvas.height;
@@ -1937,10 +2262,19 @@ function onDown(e){
   }
 
   if(isShapeTool(state.activeTool)){
+    // Snapshot BEFORE the shape is drawn so undo restores the pre-shape canvas.
+    pushHistory();
     state.shapeStart=p; state.shapeDrawing=true; e.preventDefault(); return;
   }
 
   if(state.activeCategory==='brush' || state.activeTool==='brush' || state.activeTool==='eraser'){
+    // Snapshot BEFORE the stroke so a single undo removes the whole stroke,
+    // regardless of whether it's a paint stroke or an eraser stroke.
+    pushHistory();
+    // Cache the pre-stroke canvas so the "brushstrokes-only" eraser can
+    // restore original pixels underneath brush marks without wiping the
+    // base image / baked shapes / baked text.
+    try { state._paintBase = ctx.getImageData(0,0,canvas.width,canvas.height); } catch(_e){ state._paintBase = null; }
     state.drawing=true; state.lastPt=p; paintDot(p); e.preventDefault();
   }
 }
@@ -1973,29 +2307,137 @@ function onUp(e){
     return;
   }
   if(state.shapeDrawing){
-    pushHistory();
+    // pushHistory() already captured the pre-shape state in onDown().
     const p=state.__lastShapePt||state.shapeStart;
     finalizeShape(state.shapeStart,p);
     state.shapeDrawing=false; state.__lastShapePt=null;
     octx.clearRect(0,0,overlay.width,overlay.height); drawOverlay(); return;
   }
-  if(state.drawing){ state.drawing=false; state.lastPt=null; pushHistory(); }
+  if(state.drawing){
+    state.drawing=false; state.lastPt=null;
+    // pushHistory() already captured the pre-stroke state in onDown().
+    // Release the paint-base snapshot so the next stroke takes a fresh one.
+    state._paintBase = null;
+  }
 }
 
 function paintDot(p){ paintLine(p,p); }
+
+/* Build a canvas stroke style from state.brush — supports solid colour or a
+   linear/radial gradient painted along the current stroke segment. */
+function _makeBrushStroke(a,b){
+  const br = state.brush;
+  if(!br.grad) return br.color;
+  const g = br.grad;
+  if((g.type||'linear')==='radial'){
+    const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+    const r=Math.max(br.size, Math.hypot(b.x-a.x, b.y-a.y)/2 + br.size);
+    const rg = ctx.createRadialGradient(cx,cy,Math.max(1,r*0.05),cx,cy,r);
+    rg.addColorStop(0, g.c1); rg.addColorStop(1, g.c2);
+    return rg;
+  }
+  // linear: along the segment (or angle when segment is degenerate)
+  let x1=a.x, y1=a.y, x2=b.x, y2=b.y;
+  if(a.x===b.x && a.y===b.y){
+    const ang=(g.angle||0)*Math.PI/180, len=Math.max(br.size,4);
+    x1 = a.x - Math.cos(ang)*len; y1 = a.y - Math.sin(ang)*len;
+    x2 = a.x + Math.cos(ang)*len; y2 = a.y + Math.sin(ang)*len;
+  }
+  const lg = ctx.createLinearGradient(x1,y1,x2,y2);
+  lg.addColorStop(0, g.c1); lg.addColorStop(1, g.c2);
+  return lg;
+}
+
+/* Erase brushstrokes only: restore the pre-stroke canvas along the eraser
+   path via a clipped drawImage from an offscreen snapshot canvas. Base pixels
+   are preserved; only paint that was added during the current stroke session
+   is undone. */
+function _eraseBrushOnly(a,b,size){
+  if(!state._paintBase) return;
+  // Cache a canvas built from the ImageData snapshot for repeated drawImage.
+  if(!state._paintBaseCanvas || state._paintBaseCanvas.width!==canvas.width || state._paintBaseCanvas.height!==canvas.height){
+    const c = document.createElement('canvas');
+    c.width = canvas.width; c.height = canvas.height;
+    c.getContext('2d').putImageData(state._paintBase, 0, 0);
+    state._paintBaseCanvas = c;
+  }
+  const r = Math.max(0.5, size/2);
+  ctx.save();
+  ctx.beginPath();
+  if(a.x===b.x && a.y===b.y){
+    ctx.arc(a.x, a.y, r, 0, Math.PI*2);
+  } else {
+    // Rounded capsule between a and b
+    const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
+    const nx=-dy/len*r, ny=dx/len*r;
+    ctx.moveTo(a.x+nx, a.y+ny);
+    ctx.lineTo(b.x+nx, b.y+ny);
+    ctx.arc(b.x, b.y, r, Math.atan2(ny,nx), Math.atan2(-ny,-nx));
+    ctx.lineTo(a.x-nx, a.y-ny);
+    ctx.arc(a.x, a.y, r, Math.atan2(-ny,-nx), Math.atan2(ny,nx));
+    ctx.closePath();
+  }
+  ctx.clip();
+  // Wipe the region, then paint the pre-stroke pixels back in — net effect:
+  // only paint that was laid down during this stroke disappears.
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(state._paintBaseCanvas, 0, 0);
+  ctx.restore();
+}
+
 function paintLine(a,b){
   const br=state.brush;
+  const isErasing = state.activeTool==='eraser' || br.type==='eraser';
+
   ctx.save();
-  ctx.globalAlpha=br.opacity/100; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.lineWidth=br.size; ctx.strokeStyle=br.color;
-  if(state.activeTool==='eraser'||br.type==='eraser'){ ctx.globalCompositeOperation='destination-out'; ctx.strokeStyle='rgba(0,0,0,1)'; }
-  else ctx.globalCompositeOperation='source-over';
+
+  if(isErasing){
+    if(!state.eraser.eraseAll){
+      /* Default: erase brushstrokes only — restore pre-stroke pixels along
+         the eraser path so the base image / baked shapes / baked text stay. */
+      _eraseBrushOnly(a,b,br.size);
+      ctx.restore();
+      return;
+    }
+    /* Erase-all: destination-out cuts through every layer to transparency. */
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.globalAlpha  = 1;
+    ctx.lineCap      = 'round';
+    ctx.lineJoin     = 'round';
+    ctx.lineWidth    = Math.max(1, br.size);
+    ctx.strokeStyle  = '#000';
+    ctx.fillStyle    = '#000';
+
+    if(a.x===b.x && a.y===b.y){
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, Math.max(0.5, br.size/2), 0, Math.PI*2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    return;
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = br.opacity/100;
+  ctx.lineCap='round'; ctx.lineJoin='round'; ctx.lineWidth=br.size;
+  ctx.strokeStyle = _makeBrushStroke(a,b);
+
+  // Fill style mirrors stroke style so gradient brushes fill spray/pixel/etc.
+  ctx.fillStyle = ctx.strokeStyle;
   switch(br.type){
     case 'round': ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); break;
     case 'marker': ctx.globalAlpha*=0.35; ctx.lineWidth=br.size*1.4; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); break;
     case 'spray': { const dots=Math.max(3,Math.round(br.size));
-      for(let i=0;i<dots;i++){ const r=Math.random()*br.size,ang=Math.random()*Math.PI*2; ctx.fillStyle=br.color; ctx.globalAlpha=(br.opacity/100)*Math.random(); ctx.beginPath(); ctx.arc(b.x+Math.cos(ang)*r,b.y+Math.sin(ang)*r,1,0,Math.PI*2); ctx.fill(); } break; }
-    case 'calligraphy': { const angle=Math.atan2(b.y-a.y,b.x-a.x); ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(angle+Math.PI/4); ctx.fillStyle=br.color; ctx.fillRect(-br.size,-br.size/6,br.size*2,br.size/3); ctx.restore(); break; }
-    case 'pixel': { ctx.fillStyle=br.color; const s=Math.max(2,Math.round(br.size/2)); ctx.fillRect(Math.round(b.x/s)*s,Math.round(b.y/s)*s,s,s); break; }
+      for(let i=0;i<dots;i++){ const r=Math.random()*br.size,ang=Math.random()*Math.PI*2; ctx.globalAlpha=(br.opacity/100)*Math.random(); ctx.beginPath(); ctx.arc(b.x+Math.cos(ang)*r,b.y+Math.sin(ang)*r,1,0,Math.PI*2); ctx.fill(); } break; }
+    case 'calligraphy': { const angle=Math.atan2(b.y-a.y,b.x-a.x); ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(angle+Math.PI/4); ctx.fillRect(-br.size,-br.size/6,br.size*2,br.size/3); ctx.restore(); break; }
+    case 'pixel': { const s=Math.max(2,Math.round(br.size/2)); ctx.fillRect(Math.round(b.x/s)*s,Math.round(b.y/s)*s,s,s); break; }
     case 'rainbow': { const t=(Date.now()/20)%360; ctx.strokeStyle=`hsl(${t},80%,60%)`; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); break; }
     default: ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
   }
@@ -2023,9 +2465,16 @@ function finalizeShape(a,b){
 }
 function makeGradient(t,grad,a,b){
   const x1=Math.min(a.x,b.x), y1=Math.min(a.y,b.y), x2=Math.max(a.x,b.x), y2=Math.max(a.y,b.y);
-  const ang=(grad.angle||0)*Math.PI/180;
-  const cx=(x1+x2)/2, cy=(y1+y2)/2, len=Math.max(x2-x1,y2-y1)/2;
-  const g=t.createLinearGradient(cx-Math.cos(ang)*len, cy-Math.sin(ang)*len, cx+Math.cos(ang)*len, cy+Math.sin(ang)*len);
+  const cx=(x1+x2)/2, cy=(y1+y2)/2;
+  const rx=Math.max(1,(x2-x1)/2), ry=Math.max(1,(y2-y1)/2);
+  let g;
+  if((grad.type||'linear')==='radial'){
+    g = t.createRadialGradient(cx, cy, Math.max(1,Math.min(rx,ry)*0.05), cx, cy, Math.max(rx,ry));
+  } else {
+    const ang=(grad.angle||0)*Math.PI/180;
+    const len=Math.max(rx,ry);
+    g = t.createLinearGradient(cx-Math.cos(ang)*len, cy-Math.sin(ang)*len, cx+Math.cos(ang)*len, cy+Math.sin(ang)*len);
+  }
   g.addColorStop(0,grad.c1); g.addColorStop(1,grad.c2);
   return g;
 }
@@ -2136,11 +2585,27 @@ function resizeFromDrag(p){
 /* ========================================================================
    FRAMES
    ======================================================================== */
-function applyBorder(color,thickness){
+function applyBorder(colorOrGrad,thickness){
   if(!state.img) return; pushHistory();
   const w=canvas.width,h=canvas.height;
   const t=document.createElement('canvas'); t.width=w+thickness*2; t.height=h+thickness*2; const tc=t.getContext('2d');
-  tc.fillStyle=color; tc.fillRect(0,0,t.width,t.height); tc.drawImage(canvas,thickness,thickness);
+  // Accept either a css color string or a gradient descriptor { c1, c2, type, angle }.
+  let fillStyle;
+  if(colorOrGrad && typeof colorOrGrad === 'object' && colorOrGrad.c1){
+    const g = colorOrGrad, tw=t.width, th=t.height;
+    let gr;
+    if((g.type||'linear')==='radial'){
+      gr = tc.createRadialGradient(tw/2,th/2,Math.min(tw,th)*0.05,tw/2,th/2,Math.max(tw,th)*0.75);
+    } else {
+      const ang=(g.angle||0)*Math.PI/180, cx=tw/2, cy=th/2, len=Math.hypot(tw,th)/2;
+      gr = tc.createLinearGradient(cx-Math.cos(ang)*len, cy-Math.sin(ang)*len, cx+Math.cos(ang)*len, cy+Math.sin(ang)*len);
+    }
+    gr.addColorStop(0,g.c1); gr.addColorStop(1,g.c2);
+    fillStyle = gr;
+  } else {
+    fillStyle = colorOrGrad;
+  }
+  tc.fillStyle = fillStyle; tc.fillRect(0,0,t.width,t.height); tc.drawImage(canvas,thickness,thickness);
   canvas.width=t.width; canvas.height=t.height; overlay.width=t.width; overlay.height=t.height; ctx.drawImage(t,0,0); fitCanvasCss();
 }
 function applyPolaroidFrame(){
@@ -2504,35 +2969,64 @@ function syncAdjustSliders(){
 
 function secColor(){
   const wrap=document.createElement('div');
-  // Preview swatch of current color
+  const previewBg = state.brush.grad ? gradientCSS(state.brush.grad) : state.brush.color;
+  // Preview swatch of current color / gradient
   const cur=el(`<div class="field"><label>Current Color</label>
-    <div class="colorctrl-head"><div class="swatch-preview" id="sec-color-preview" style="background:${state.brush.color};flex:1;"></div></div>
+    <div class="colorctrl-head"><div class="swatch-preview" id="sec-color-preview" style="background:${previewBg};flex:1;"></div></div>
   </div>`);
-  cur.querySelector('#sec-color-preview').addEventListener('click',()=>{
+  const openPicker = ()=>{
     openColorModal({
-      title:'Brush / Fill Color', value:state.brush.color, allowGrad:false,
-      onApply:(r)=>{ if(r.type==='solid'){ state.brush.color=r.color; renderContent(); } }
+      title:'Brush / Fill Color', value:state.brush.color, grad:state.brush.grad, allowGrad:true,
+      onApply:(r)=>{
+        if(r.type==='solid'){ state.brush.color=r.color; state.brush.grad=null; }
+        else               { state.brush.grad=r.grad; }
+        renderContent();
+      }
     });
-  });
+  };
+  cur.querySelector('#sec-color-preview').addEventListener('click', openPicker);
   wrap.appendChild(cur);
 
   // "Set color" button (opens modal)
-  const setBtn=el(`<button class="tool-btn centered" style="margin-bottom:8px;">${ICONS.color}<span>Set color</span></button>`);
-  setBtn.addEventListener('click',()=>{
-    openColorModal({
-      title:'Brush / Fill Color', value:state.brush.color, allowGrad:false,
-      onApply:(r)=>{ if(r.type==='solid'){ state.brush.color=r.color; renderContent(); } }
-    });
-  });
+  const setBtn=el(`<button class="tool-btn centered" style="margin-bottom:8px;">${ICONS.color}<span>Set color / gradient</span></button>`);
+  setBtn.addEventListener('click', openPicker);
   wrap.appendChild(setBtn);
 
   const sw=el(`<div class="field"><label>Swatches</label><div class="swatches"></div></div>`);
   const swg=sw.querySelector('.swatches');
-  SWATCHES.forEach(c=>{ const s=el(`<div class="swatch" style="background:${c}" data-c="${c}"></div>`); if(c===state.brush.color)s.classList.add('active');
-    s.addEventListener('click',()=>{ state.brush.color=c; renderContent(); }); swg.appendChild(s); });
+  SWATCHES.forEach(c=>{ const s=el(`<div class="swatch" style="background:${c}" data-c="${c}"></div>`); if(c===state.brush.color && !state.brush.grad)s.classList.add('active');
+    s.addEventListener('click',()=>{ state.brush.color=c; state.brush.grad=null; renderContent(); }); swg.appendChild(s); });
   wrap.appendChild(sw);
+
+  // Gradient preset row (one click to pick a gradient without opening the modal)
+  const gsw=el(`<div class="field"><label>Gradient Presets</label><div class="swatches" style="grid-template-columns:repeat(4,1fr);"></div></div>`);
+  const gswg=gsw.querySelector('.swatches');
+  GRAD_PRESETS.forEach((g,i)=>{ const s=el(`<div class="swatch" style="background:${gradientCSS(g)};aspect-ratio:2/1;" data-gi="${i}"></div>`);
+    s.addEventListener('click',()=>{ state.brush.grad={...g}; renderContent(); }); gswg.appendChild(s); });
+  wrap.appendChild(gsw);
+
   const fillBtn=el(`<button class="tool-btn centered" style="margin-top:6px;">${ICONS.color}<span>Fill Canvas</span></button>`);
-  fillBtn.addEventListener('click',()=>{ if(!state.img) return; pushHistory(); ctx.save(); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over'; ctx.fillStyle=state.brush.color; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.restore(); });
+  fillBtn.addEventListener('click',()=>{
+    if(!state.img) return; pushHistory();
+    ctx.save(); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+    if(state.brush.grad){
+      // Fill canvas with the current gradient (linear or radial), spanning the whole canvas.
+      const w=canvas.width, h=canvas.height, g=state.brush.grad;
+      let gr;
+      if((g.type||'linear')==='radial'){
+        gr = ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*0.05,w/2,h/2,Math.max(w,h)*0.75);
+      } else {
+        const ang=(g.angle||0)*Math.PI/180, cx=w/2, cy=h/2, len=Math.hypot(w,h)/2;
+        gr = ctx.createLinearGradient(cx-Math.cos(ang)*len, cy-Math.sin(ang)*len, cx+Math.cos(ang)*len, cy+Math.sin(ang)*len);
+      }
+      gr.addColorStop(0,g.c1); gr.addColorStop(1,g.c2);
+      ctx.fillStyle = gr;
+    } else {
+      ctx.fillStyle = state.brush.color;
+    }
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+  });
   wrap.appendChild(fillBtn);
   return sectionShell('sec-color','Color',wrap);
 }
@@ -2540,20 +3034,191 @@ function secColor(){
 function secFilters(){
   const wrap=document.createElement('div');
   const g=el(`<div class="grid grid-3"></div>`);
-  FILTERS.forEach(f=>{ const b=el(`<button class="tool-btn centered">${f.label}</button>`); b.addEventListener('click',()=>applyFilterPreset(f.id)); g.appendChild(b); });
+  FILTERS.forEach(f=>{
+    if(f.id==='none'){
+      const b=el(`<button class="tool-btn centered">${f.label}</button>`);
+      b.addEventListener('click',()=>applyFilterPreset(f.id));
+      g.appendChild(b);
+      return;
+    }
+    g.appendChild(makeFxItem('filter', f.id, f.label, ()=>applyFilterPreset(f.id)));
+  });
   wrap.appendChild(g);
+
+  /* Custom Color Filter */
+  wrap.appendChild(el(`<div class="section-title" style="margin-top:12px;"><span>Custom Color Filter</span><span class="sec-line"></span></div>`));
+  wrap.appendChild(secCustomColorFilter());
+
   return sectionShell('sec-filters','Filters',wrap);
 }
 
 function secEffects(){
   const wrap=document.createElement('div');
   const g=el(`<div class="grid grid-3"></div>`);
-  EFFECTS.forEach(f=>{ const b=el(`<button class="tool-btn centered">${f.label}</button>`); b.addEventListener('click',()=>applyEffect(f.id)); g.appendChild(b); });
+  EFFECTS.forEach(f=>{ g.appendChild(makeFxItem('effect', f.id, f.label, ()=>applyEffect(f.id))); });
   wrap.appendChild(g);
   const dt=el(`<div class="field" style="margin-top:10px;"><label>Duotone Colors</label><div class="row"><input type="color" id="dt-c1" value="#1a1a5e"/><input type="color" id="dt-c2" value="#ff9f43"/></div><button class="tool-btn centered" style="margin-top:6px;" id="dt-apply">Apply Duotone</button></div>`);
   wrap.appendChild(dt);
   dt.querySelector('#dt-apply').addEventListener('click',()=>applyEffect('duotone',{c1:dt.querySelector('#dt-c1').value,c2:dt.querySelector('#dt-c2').value}));
   return sectionShell('sec-effects','Effects',wrap);
+}
+
+/* -------------------------------------------------------------------
+   Reusable strength-picker item for filters/effects.
+   Structure: [ main label button ] [ chevron popover with slider ]
+   ------------------------------------------------------------------- */
+function makeFxItem(kind, id, label, onApply){
+  const wrap = el(`<div class="fx-item"></div>`);
+  const main = el(`<button class="fx-main">${label}</button>`);
+  const more = el(`<button class="fx-more" title="Strength"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>`);
+  wrap.appendChild(main); wrap.appendChild(more);
+
+  const cur = getFxStrength(kind,id);
+  if(cur !== 1) wrap.classList.add('has-strength');
+
+  main.addEventListener('click', ()=>{ onApply(); });
+
+  /* Strength slider: 0 = no filter, 1 = 100% (normal), 10 = 1000% (extreme).
+     Step 0.1 gives fine control including decimal values below 1. */
+  const pop = el(`
+    <div class="fx-pop">
+      <label>Strength <span class="fx-pop-val">${cur.toFixed(2)}</span></label>
+      <input type="range" class="fx-pop-slider" min="0" max="10" step="0.1" value="${cur}"/>
+      <div class="fx-pop-hint">0 = none · 1 = 100% · 10 = 1000%</div>
+      <div class="fx-actions">
+        <button class="fx-reset">Reset</button>
+        <button class="fx-apply primary">Apply</button>
+      </div>
+    </div>`);
+  wrap.appendChild(pop);
+
+  const slider = pop.querySelector('.fx-pop-slider');
+  const valEl  = pop.querySelector('.fx-pop-val');
+  slider.addEventListener('input', e=>{
+    const v = parseFloat(e.target.value);
+    valEl.textContent = v.toFixed(2);
+    setFxStrength(kind,id,v);
+    wrap.classList.toggle('has-strength', v !== 1);
+  });
+  pop.querySelector('.fx-reset').addEventListener('click', ()=>{
+    setFxStrength(kind,id,1);
+    slider.value = 1; valEl.textContent = '1.00';
+    wrap.classList.remove('has-strength');
+  });
+  pop.querySelector('.fx-apply').addEventListener('click', ()=>{
+    closeAllFxPops();
+    onApply();
+  });
+
+  /* Position the popover using fixed coordinates so it is never clipped by a
+     scroll container. Anchored under (or above) the More button, aligned to
+     the right edge of the fx-item and flipped when it would run off-screen. */
+  function positionFxPop(){
+    const anchor = wrap.getBoundingClientRect();
+    // Move pop off-screen first to measure its natural size without affecting layout.
+    pop.style.left = '0px'; pop.style.top = '0px';
+    const pr = pop.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight, margin = 6;
+    let top  = anchor.bottom + 4;
+    let left = anchor.right  - pr.width;   // right-align by default
+    // Flip up if bottom would overflow
+    if(top + pr.height > vh - margin){
+      const above = anchor.top - 4 - pr.height;
+      if(above >= margin) top = above;
+      else top = Math.max(margin, vh - pr.height - margin);
+    }
+    // Keep inside horizontal viewport
+    if(left < margin) left = margin;
+    if(left + pr.width > vw - margin) left = Math.max(margin, vw - pr.width - margin);
+    pop.style.left = left + 'px';
+    pop.style.top  = top  + 'px';
+  }
+  more.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const open = pop.classList.contains('open');
+    closeAllFxPops();
+    if(!open){
+      pop.classList.add('open');
+      // Re-measure/position after the browser lays out the now-visible pop.
+      requestAnimationFrame(positionFxPop);
+    }
+  });
+  /* Keep positioning fresh on resize/scroll while open. */
+  const _reposition = ()=>{ if(pop.classList.contains('open')) positionFxPop(); };
+  window.addEventListener('resize', _reposition);
+  window.addEventListener('scroll', _reposition, true);
+  /* prevent slider input from bubbling to document-click close handler */
+  pop.addEventListener('click', e=>e.stopPropagation());
+
+  return wrap;
+}
+function closeAllFxPops(){ document.querySelectorAll('.fx-pop.open').forEach(p=>p.classList.remove('open')); }
+document.addEventListener('click', ()=>closeAllFxPops());
+
+function secCustomColorFilter(){
+  /* Local state for the color + gradient + intensity + blend controls */
+  const localState = {
+    color: '#4d96ff',
+    grad: null, /* {c1,c2,type,angle} */
+    intensity: 0.5,
+    blend: 'overlay',
+  };
+
+  const wrap = document.createElement('div');
+
+  /* Color / gradient chooser — reuses the existing color modal (supports gradients). */
+  const colorField = colorControl({
+    label:'Filter Color',
+    value: localState.color,
+    allowGrad: true,
+    grad: localState.grad,
+    onColor: v => { localState.color = v; localState.grad = null; },
+    onGrad:  g => { localState.grad = g; },
+  });
+  wrap.appendChild(colorField);
+
+  /* Intensity slider (0-100%) */
+  const intField = el(`
+    <div class="field">
+      <label>Intensity <span class="val ccf-int-val">${Math.round(localState.intensity*100)}%</span></label>
+      <input type="range" class="ccf-int" min="0" max="100" value="${Math.round(localState.intensity*100)}"/>
+    </div>`);
+  intField.querySelector('.ccf-int').addEventListener('input', e=>{
+    localState.intensity = parseInt(e.target.value)/100;
+    intField.querySelector('.ccf-int-val').textContent = e.target.value + '%';
+  });
+  wrap.appendChild(intField);
+
+  /* Blend mode selector */
+  const blendField = el(`
+    <div class="field">
+      <label>Blend Mode</label>
+      <select class="ccf-blend">
+        <option value="overlay">Overlay</option>
+        <option value="multiply">Multiply</option>
+        <option value="screen">Screen</option>
+        <option value="soft-light">Soft Light</option>
+        <option value="color">Color (hue+sat)</option>
+        <option value="normal">Normal</option>
+      </select>
+    </div>`);
+  blendField.querySelector('.ccf-blend').value = localState.blend;
+  blendField.querySelector('.ccf-blend').addEventListener('change', e=>{ localState.blend = e.target.value; });
+  wrap.appendChild(blendField);
+
+  /* Apply */
+  const applyBtn = el(`<button class="tool-btn centered" style="margin-top:4px;">${ICONS.check}<span>Apply Color Filter</span></button>`);
+  applyBtn.addEventListener('click', ()=>{
+    applyCustomColorFilter({
+      color: localState.color,
+      grad:  localState.grad,
+      intensity: localState.intensity,
+      blend: localState.blend,
+    });
+  });
+  wrap.appendChild(applyBtn);
+  wrap.appendChild(el(`<div class="hint">Pick any solid color or gradient, choose a blend mode, and adjust the intensity for a tinted color-filter look.</div>`));
+  return wrap;
 }
 
 function secBrush(){
@@ -2565,7 +3230,22 @@ function secBrush(){
   const size=el(`<div class="field" style="margin-top:10px;"><label>Size <span class="val">${state.brush.size}px</span></label><input type="range" min="1" max="200" value="${state.brush.size}" data-brush="size"/></div>`);
   const op=el(`<div class="field"><label>Opacity <span class="val">${state.brush.opacity}%</span></label><input type="range" min="1" max="100" value="${state.brush.opacity}" data-brush="opacity"/></div>`);
   wrap.appendChild(size); wrap.appendChild(op);
-  wrap.appendChild(colorControl({label:'Color',value:state.brush.color,allowGrad:false,onColor:v=>{state.brush.color=v;}}));
+
+  // Eraser-only controls when the eraser is the active brush.
+  const isEraser = state.activeTool==='eraser' || state.brush.type==='eraser';
+  if(isEraser){
+    const modeField = el(`<div class="field"><label>Erase Everything <button class="grad-toggle ${state.eraser.eraseAll?'active':''}" id="eraser-all" style="width:auto;padding:2px 8px;">${state.eraser.eraseAll?'ON':'OFF'}</button></label></div>`);
+    modeField.querySelector('#eraser-all').addEventListener('click',()=>{ state.eraser.eraseAll = !state.eraser.eraseAll; renderContent(); });
+    wrap.appendChild(modeField);
+    wrap.appendChild(el(`<div class="hint">Off (default): eraser removes only brushstrokes, keeping the image and baked shapes/text intact. On: cuts through every layer (image, brushstrokes, baked shapes/text) to transparency.</div>`));
+  } else {
+    // Colour + gradient control for actual brushes
+    wrap.appendChild(colorControl({
+      label:'Color', value:state.brush.color, allowGrad:true, grad:state.brush.grad,
+      onColor:v=>{ state.brush.color=v; state.brush.grad=null; },
+      onGrad :g=>{ state.brush.grad=g; }
+    }));
+  }
   wrap.querySelectorAll('[data-brush]').forEach(inp=>{ inp.addEventListener('input',e=>{ const k=inp.dataset.brush; const v=parseFloat(e.target.value); state.brush[k]=v; const valEl=inp.parentElement.querySelector('.val'); if(valEl){ if(k==='size')valEl.textContent=v+'px'; else if(k==='opacity')valEl.textContent=v+'%'; else valEl.textContent=v; } }); });
   return sectionShell('sec-brush','Brush & Paint',wrap);
 }
@@ -2726,9 +3406,24 @@ function secFrame(){
     grid.appendChild(b);
   });
   wrap.appendChild(grid);
-  const custom=el(`<div class="field" style="margin-top:10px;"><label>Custom Border</label><div class="row"><input type="color" id="bd-c" value="#ffffff"/><input type="number" id="bd-t" value="20" min="1" max="200"/></div><button class="tool-btn centered" id="bd-apply" style="margin-top:6px;">Apply Border</button></div>`);
-  custom.querySelector('#bd-apply').addEventListener('click',()=>applyBorder(custom.querySelector('#bd-c').value,parseInt(custom.querySelector('#bd-t').value)||1));
+
+  // Local state for the custom border (solid or gradient)
+  if(!state._borderStyle) state._borderStyle = { color:'#ffffff', grad:null, thickness:20 };
+  const bs = state._borderStyle;
+  const custom=el(`<div class="field" style="margin-top:10px;"><label>Custom Border</label></div>`);
+  custom.appendChild(colorControl({
+    label:'Border Color', value:bs.color, allowGrad:true, grad:bs.grad,
+    onColor:v=>{ bs.color=v; bs.grad=null; },
+    onGrad :g=>{ bs.grad=g; }
+  }));
+  const thick=el(`<div class="field"><label>Thickness <span class="val">${bs.thickness}px</span></label><input type="range" min="1" max="200" value="${bs.thickness}"/></div>`);
+  thick.querySelector('input').addEventListener('input',e=>{ bs.thickness=parseInt(e.target.value)||1; thick.querySelector('.val').textContent = bs.thickness+'px'; });
+  custom.appendChild(thick);
+  const applyBtn=el(`<button class="tool-btn centered" style="margin-top:6px;">Apply Border</button>`);
+  applyBtn.addEventListener('click',()=>applyBorder(bs.grad ? bs.grad : bs.color, bs.thickness));
+  custom.appendChild(applyBtn);
   wrap.appendChild(custom);
+
   const round=el(`<div class="field" style="margin-top:6px;"><label>Round Corners</label><div class="row"><input type="number" id="rc-r" value="30" min="1" max="500"/><input type="color" id="rc-c" value="#333333"/></div><button class="tool-btn centered" id="rc-apply" style="margin-top:6px;">Apply Rounded</button></div>`);
   round.querySelector('#rc-apply').addEventListener('click',()=>applyRoundedFrame(parseInt(round.querySelector('#rc-r').value)||10,round.querySelector('#rc-c').value));
   wrap.appendChild(round);
@@ -2776,10 +3471,44 @@ const deskDropdown=document.getElementById('desk-dropdown');
 const deskDDSearch=document.getElementById('desk-dd-search');
 const deskDDList=document.getElementById('desk-dd-list');
 deskSwitch.addEventListener('click',()=>{ deskDropdown.classList.contains('open')?closeDeskDropdown():openDeskDropdown(); });
-function openDeskDropdown(){ deskDropdown.classList.add('open'); deskSwitch.classList.add('open'); buildDropdown(deskDDList,deskDDSearch,false); deskDDSearch.focus(); }
-function closeDeskDropdown(){ deskDropdown.classList.remove('open'); deskSwitch.classList.remove('open'); deskDDSearch.value=''; }
+function openDeskDropdown(){ deskDropdown.classList.add('open'); deskSwitch.classList.add('open'); buildDropdown(deskDDList,deskDDSearch,false); positionDeskDropdown(); deskDDSearch.focus(); }
+function closeDeskDropdown(){
+  deskDropdown.classList.remove('open'); deskSwitch.classList.remove('open'); deskDDSearch.value='';
+  // Clear inline fixed-position styles so the next open re-measures cleanly.
+  deskDropdown.style.position=''; deskDropdown.style.top=''; deskDropdown.style.left='';
+  deskDropdown.style.right=''; deskDropdown.style.width=''; deskDropdown.style.maxHeight='';
+  deskDDList.style.maxHeight='';
+}
+/* Position the desktop category dropdown using fixed coordinates so it is
+   never clipped by sidebar overflow, and always sizes to the viewport. */
+function positionDeskDropdown(){
+  const a = deskSwitch.getBoundingClientRect();
+  const vh = window.innerHeight, margin = 8;
+  const belowSpace = vh - a.bottom - margin;
+  const aboveSpace = a.top - margin;
+  const useBelow = belowSpace >= 180 || belowSpace >= aboveSpace;
+  const maxH = Math.max(180, Math.min(480, useBelow ? belowSpace : aboveSpace));
+  deskDropdown.style.position = 'fixed';
+  deskDropdown.style.left  = a.left  + 'px';
+  deskDropdown.style.width = a.width + 'px';
+  deskDropdown.style.right = 'auto';
+  if(useBelow){
+    deskDropdown.style.top    = (a.bottom + 4) + 'px';
+    deskDropdown.style.bottom = 'auto';
+  } else {
+    deskDropdown.style.top    = 'auto';
+    deskDropdown.style.bottom = (vh - a.top + 4) + 'px';
+  }
+  deskDropdown.style.maxHeight = maxH + 'px';
+  // Give the inner scroll-list the remaining height after the search box.
+  const searchEl = deskDropdown.querySelector('.dropdown-search');
+  const searchH = searchEl ? searchEl.getBoundingClientRect().height : 0;
+  deskDDList.style.maxHeight = Math.max(120, maxH - searchH - 4) + 'px';
+}
 deskDDSearch.addEventListener('input',()=>buildDropdown(deskDDList,deskDDSearch,false));
 document.addEventListener('click',e=>{ if(!deskDropdown.contains(e.target)&&!deskSwitch.contains(e.target))closeDeskDropdown(); });
+window.addEventListener('resize',()=>{ if(deskDropdown.classList.contains('open')) positionDeskDropdown(); });
+window.addEventListener('scroll',()=>{ if(deskDropdown.classList.contains('open')) positionDeskDropdown(); }, true);
 
 const sidebarSearch=document.getElementById('sidebar-search');
 sidebarSearch.addEventListener('input',()=>filterSections(sidebarSearch.value));
@@ -2951,12 +3680,16 @@ function updateMobileBarHeightVar(){
     const mb=document.getElementById('mb-content');
     const hasContent=mb&&mb.children.length>0;
     bar.classList.toggle('compact',!hasContent);
-    const h=bar.getBoundingClientRect().height||150;
+    /* If the user manually resized the bar via the drag pill, honour it. */
+    const manual = bar.style.height ? parseFloat(bar.style.height) : 0;
+    const h = (manual > 0) ? manual : (bar.getBoundingClientRect().height || 150);
     document.documentElement.style.setProperty('--mb-height',h+'px');
     const tb=document.getElementById('mobile-topbar');
     if(tb) document.documentElement.style.setProperty('--topbar-height',(tb.getBoundingClientRect().height||46)+'px');
   } else {
     document.documentElement.style.removeProperty('--mb-height'); bar.classList.remove('compact');
+    /* Clear any leftover manual sizing when switching to desktop. */
+    bar.style.maxHeight=''; bar.style.height='';
   }
   if(typeof fitCanvasCss==='function')fitCanvasCss();
 }
@@ -3053,6 +3786,162 @@ function renderCropStrip(mode){
 }
 
 /* ========================================================================
+   MOBILE TOP-BAR SEARCH
+   The search button toggles a search bar that replaces the category selector.
+   The bar filters section content the same way the desktop sidebar search does.
+   ======================================================================== */
+(function bindMobileTopbarSearch(){
+  const btn = document.getElementById('mtb-search-btn');
+  const box = document.getElementById('mtb-search-box');
+  const cat = document.getElementById('mtb-cat');
+  const input = document.getElementById('mtb-search-input');
+  const closeBtn = document.getElementById('mtb-search-close');
+  if(!btn || !box || !cat || !input) return;
+
+  function openSearch(){
+    box.classList.add('open');
+    cat.style.display = 'none';
+    btn.classList.add('active');
+    setTimeout(()=>input.focus(), 30);
+  }
+  function closeSearch(){
+    box.classList.remove('open');
+    cat.style.display = '';
+    btn.classList.remove('active');
+    input.value = '';
+    filterSections('');
+    filterMobileSections('');
+  }
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    if(box.classList.contains('open')) closeSearch();
+    else openSearch();
+  });
+  closeBtn.addEventListener('click', closeSearch);
+  input.addEventListener('input', ()=>{
+    /* Reuse the desktop search filter helper AND also mirror to mobile content. */
+    filterSections(input.value);
+    filterMobileSections(input.value);
+  });
+  input.addEventListener('keydown', e=>{
+    if(e.key === 'Escape') closeSearch();
+  });
+})();
+
+/* Mobile mirror of filterSections — filters the .mb-content section list too. */
+function filterMobileSections(q){
+  q = (q||'').toLowerCase().trim();
+  document.querySelectorAll('#mb-content .section').forEach(sec=>{
+    let matchAny = false;
+    sec.querySelectorAll('.tool-btn, .fx-item, .field').forEach(x=>{
+      const txt = x.textContent.toLowerCase();
+      const show = !q || txt.includes(q);
+      x.style.display = show ? '' : 'none';
+      if(show) matchAny = true;
+    });
+    const titleEl = sec.querySelector('.section-title span:first-child');
+    const title = titleEl ? titleEl.textContent.toLowerCase() : '';
+    if(!q || title.includes(q)) matchAny = true;
+    sec.style.display = matchAny ? '' : 'none';
+  });
+}
+
+/* Extend the desktop search helper so it also matches .fx-item entries. */
+(function patchFilterSections(){
+  const origFilter = window.filterSections || filterSections;
+  window.filterSections = function(q){
+    q = (q||'').toLowerCase().trim();
+    document.querySelectorAll('#content .section').forEach(sec=>{
+      let matchAny = false;
+      sec.querySelectorAll('.tool-btn, .fx-item, .field').forEach(x=>{
+        const txt = x.textContent.toLowerCase();
+        const show = !q || txt.includes(q);
+        x.style.display = show ? '' : 'none';
+        if(show) matchAny = true;
+      });
+      const titleEl = sec.querySelector('.section-title span:first-child');
+      const title = titleEl ? titleEl.textContent.toLowerCase() : '';
+      if(!q || title.includes(q)) matchAny = true;
+      sec.style.display = matchAny ? '' : 'none';
+    });
+  };
+})();
+
+/* ========================================================================
+   MOBILE BOTTOM-PANE DRAG PILL
+   Lets the user drag the top edge of the bottom pane up/down to resize it,
+   revealing more of the image on small screens.
+   ======================================================================== */
+(function bindDragPill(){
+  const pill = document.getElementById('mb-drag-pill');
+  const bar  = document.getElementById('mobile-bar');
+  if(!pill || !bar) return;
+
+  let dragging = false, startY = 0, startH = 0;
+
+  function clampHeight(px){
+    const vh = window.innerHeight;
+    const min = 56;                     /* just enough to show the pill + one row */
+    const max = Math.floor(vh * 0.9);   /* never eat the whole screen */
+    return Math.max(min, Math.min(max, px));
+  }
+
+  function begin(clientY){
+    if(!window.matchMedia('(max-width: 900px)').matches) return;
+    dragging = true;
+    startY = clientY;
+    startH = bar.getBoundingClientRect().height;
+    pill.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+  }
+  function move(clientY){
+    if(!dragging) return;
+    /* Dragging up increases pane height (clientY decreases). */
+    const dy = startY - clientY;
+    const h  = clampHeight(startH + dy);
+    bar.style.maxHeight = h + 'px';
+    bar.style.height    = h + 'px';
+    document.documentElement.style.setProperty('--mb-height', h + 'px');
+    if(typeof fitCanvasCss === 'function') fitCanvasCss();
+  }
+  function end(){
+    if(!dragging) return;
+    dragging = false;
+    pill.classList.remove('dragging');
+    document.body.style.userSelect = '';
+  }
+
+  pill.addEventListener('mousedown', e=>{ begin(e.clientY); e.preventDefault(); });
+  window.addEventListener('mousemove', e=>move(e.clientY));
+  window.addEventListener('mouseup', end);
+
+  pill.addEventListener('touchstart', e=>{
+    if(!e.touches[0]) return;
+    begin(e.touches[0].clientY);
+  }, {passive:true});
+  window.addEventListener('touchmove', e=>{
+    if(!dragging || !e.touches[0]) return;
+    move(e.touches[0].clientY);
+    e.preventDefault();
+  }, {passive:false});
+  window.addEventListener('touchend', end);
+  window.addEventListener('touchcancel', end);
+
+  /* Double-tap the pill to snap back to auto height. */
+  let lastTap = 0;
+  pill.addEventListener('click', ()=>{
+    const now = Date.now();
+    if(now - lastTap < 350){
+      bar.style.maxHeight = '';
+      bar.style.height = '';
+      updateMobileBarHeightVar();
+      if(typeof fitCanvasCss === 'function') fitCanvasCss();
+    }
+    lastTap = now;
+  });
+})();
+
+/* ========================================================================
    INIT
    ======================================================================== */
 function init(){
@@ -3070,6 +3959,9 @@ function init(){
 }
 init();
 </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
