@@ -969,7 +969,80 @@
      border-radius:6px; cursor:pointer;
    }
    .fx-pop .fx-actions button.primary{ background:var(--accent); border-color:transparent; color:#fff; }
-  
+
+   /* ---------- Filter/Effect accordion (groups presets into collapsible sections) ---------- */
+   .fx-accordion{
+     margin:6px 0;
+     background:var(--panel-2);
+     border:1px solid var(--border);
+     border-radius:10px;
+     overflow:hidden;
+   }
+   .fx-acc-head{
+     width:100%;
+     display:flex; align-items:center; justify-content:space-between;
+     padding:9px 12px;
+     background:var(--panel-2);
+     border:none;
+     color:var(--text);
+     font-size:13px;
+     font-weight:600;
+     cursor:pointer;
+     text-align:left;
+   }
+   .fx-acc-head:hover{ background:var(--panel-3); }
+   .fx-acc-chev{ display:grid; place-items:center; transition:transform .18s; opacity:.75; }
+   .fx-acc-chev svg{ width:14px; height:14px; }
+   .fx-accordion.open .fx-acc-chev{ transform:rotate(180deg); }
+   .fx-acc-body{
+     display:none;
+     padding:10px 10px 12px;
+     border-top:1px solid var(--border);
+   }
+   .fx-accordion.open .fx-acc-body{ display:block; }
+
+   /* ---------- Image Clipping overlay drawing & UI ---------- */
+   .clip-modal-thumbs{
+     display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+     max-height:280px; overflow-y:auto;
+     padding:4px; background:var(--panel-2); border-radius:8px;
+   }
+   .clip-thumb{
+     position:relative;
+     aspect-ratio:1/1;
+     background:#222;
+     border:2px solid transparent;
+     border-radius:6px;
+     overflow:hidden;
+     cursor:pointer;
+   }
+   .clip-thumb.selected{ border-color:var(--accent); }
+   .clip-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+   .clip-thumb .rm{
+     position:absolute; top:2px; right:2px;
+     width:20px; height:20px; border-radius:50%;
+     background:rgba(0,0,0,.6); color:#fff; border:none;
+     display:grid; place-items:center; font-size:12px; cursor:pointer;
+   }
+   .clip-list{
+     display:flex; flex-direction:column; gap:6px;
+     margin-top:8px; max-height:280px; overflow-y:auto;
+   }
+   .clip-list-item{
+     display:flex; align-items:center; gap:8px;
+     background:var(--panel-2); border:1px solid var(--border);
+     border-radius:8px; padding:6px 8px; cursor:pointer;
+   }
+   .clip-list-item.active{ border-color:var(--accent); background:var(--panel-3); }
+   .clip-list-item .lp-thumb{ width:34px; height:34px; border-radius:4px; background:#000; background-size:cover; background-position:center; flex-shrink:0; }
+   .clip-list-item .lp-info{ flex:1; min-width:0; font-size:12px; }
+   .clip-list-item .lp-info .lp-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+   .clip-list-item .lp-info .lp-meta{ color:var(--muted); font-size:10px; }
+   .clip-list-item .lp-del{
+     background:transparent; border:none; color:var(--danger);
+     font-size:16px; cursor:pointer; padding:2px 6px;
+   }
+
    /* ---------- Mobile top bar search ---------- */
    .mtb-search-btn{
      width:34px; height:34px;
@@ -1414,6 +1487,29 @@
    </div>
  </div>
   
+ <!-- IMAGE CLIPPING MODAL -->
+ <div class="modal-backdrop" id="clip-modal">
+   <div class="modal" style="max-width:520px;">
+     <h3>Add Image Clip</h3>
+     <div class="modal-tabs" id="clip-tabs">
+       <button data-cliptab="upload" class="active">Upload</button>
+       <button data-cliptab="saved">Saved Images</button>
+     </div>
+     <div id="clip-tab-upload">
+       <button class="tool-btn centered" id="clip-upload-btn" style="min-height:44px;">Choose Image from Device</button>
+       <div class="hint" style="margin-top:8px;">Uploaded images are added to the Saved Images tab for reuse.</div>
+     </div>
+     <div id="clip-tab-saved" style="display:none;">
+       <div class="hint" id="clip-saved-hint" style="margin-bottom:6px;">Click any saved image to add it as a clip. Click "×" to remove.</div>
+       <div class="clip-modal-thumbs" id="clip-saved-thumbs"></div>
+     </div>
+     <input type="file" id="clip-file-input" accept="image/*" multiple style="display:none;"/>
+     <div class="modal-actions">
+       <button data-clipmodal="cancel">Close</button>
+     </div>
+   </div>
+ </div>
+
  <!-- EXPORT MODAL -->
  <div class="modal-backdrop" id="export-modal">
    <div class="modal">
@@ -1548,6 +1644,29 @@
    /* Clipboard for cut/copy/paste from the context menu.
       Stores plain-JSON deep clones of shape/text objects. */
    clipboard:[],
+
+   /* Image clips: floating raster clips placed on top of the canvas.
+      Each clip = { id, imgSrc (dataURL), x, y, w, h, rot,
+                    borderColor, borderWidth, radius,
+                    filterId, effectId, strength,
+                    adj: {brightness, contrast, saturation, ...},
+                    _img: HTMLImageElement (cached, not serialized) } */
+   clips: [],
+   activeClipId: null,
+   clipDragging: false,
+   clipDragOff: null,
+   clipHandle: null,      // 'move'|'br'|'tr'|'bl'|'tl'|'rot'
+   clipStart: null,
+   /* Library of images added via the Image Clipping modal (used by the
+      Saved tab so users don't have to re-upload). */
+   savedImages: [],
+
+   /* Brush FX mode — when set, brush painting applies the given filter or
+      effect to the underlying image at the given strength instead of
+      painting colour. See paintFxAt(). */
+   brushFxMode: null,     // 'filter'|'effect'|null
+   brushFxId: null,       // id from FILTERS/EFFECTS
+   brushFxStrength: 1,    // 0..10 slider value
  };
   
  const canvas = document.getElementById('canvas');
@@ -1578,6 +1697,7 @@
    { id:'shape',     label:'Shapes',        icon:'shape' },
    { id:'text',      label:'Text',          icon:'text' },
    { id:'frame',     label:'Frame & Border',icon:'frame' },
+   { id:'clip',      label:'Image Clipping',icon:'frame' },
    { id:'format',    label:'Formatting',    icon:'adjust' },
  ];
  function visibleCategories(){ return CATEGORIES.slice(); }
@@ -1657,6 +1777,8 @@
      const tctx = t.getContext('2d');
      tctx.drawImage(canvas, 0, 0);
      if(paintLayer && paintLayer.width>0) tctx.drawImage(paintLayer, 0, 0);
+     /* Composite floating clips so composited exports show them. */
+     if(state.clips && state.clips.length) drawClipsInto(tctx, null);
      /* Live shapes are re-created on undo/redo from the resurrection
         image data, so include them here so the snapshot is a true
         image of what the user currently sees. */
@@ -1712,6 +1834,10 @@
        paintUrl  : paintUrl,
        texts     : JSON.parse(JSON.stringify(state.texts||[])),
        shapes    : JSON.parse(JSON.stringify(state.shapes||[])),
+       /* Clone clips without the cached HTMLImageElement (which cannot be
+          JSON-serialised). Rehydrated on restore. */
+       clips     : (state.clips||[]).map(c=>{ const {_img,...rest}=c; return JSON.parse(JSON.stringify(rest)); }),
+       activeClipId: state.activeClipId,
        adj       : JSON.parse(JSON.stringify(state.adj||{})),
        filter    : state.filter,
        brush     : JSON.parse(JSON.stringify(state.brush||{})),
@@ -1742,6 +1868,8 @@
        state.img = im;
        state.texts  = JSON.parse(JSON.stringify(snap.texts||[]));
        state.shapes = JSON.parse(JSON.stringify(snap.shapes||[]));
+       state.clips  = JSON.parse(JSON.stringify(snap.clips||[]));
+       state.activeClipId = snap.activeClipId || null;
        if(snap.adj)   state.adj   = JSON.parse(JSON.stringify(snap.adj));
        if(snap.filter!==undefined) state.filter = snap.filter;
        if(snap.brush) state.brush = JSON.parse(JSON.stringify(snap.brush));
@@ -1749,6 +1877,10 @@
        state.activeTextId = null;
        state.activeShapeId = null;
        showCanvas(); fitCanvasCss();
+       /* Rehydrate clip images then redraw so they appear after undo/redo. */
+       ensureClipImages(()=>{
+         drawOverlay(); renderContent(); renderRail();
+       });
        drawOverlay();
        renderContent();
        renderRail();
@@ -1948,6 +2080,8 @@
      // Composite any un-baked shape objects (state.shapes).
      if(state.shapes && state.shapes.length) state.shapes.forEach(s=> drawShapeItem(ec, s, false));
      state.texts.forEach(t=> drawTextItem(ec, t, false));
+     // Composite floating image clips into the exported image (no handles).
+     if(state.clips && state.clips.length) drawClipsInto(ec, null);
      const url = exp.toDataURL(mime, fmt==='png' ? undefined : q);
      const a2 = document.createElement('a');
      a2.href = url; a2.download = name + '.' + (fmt==='jpeg'?'jpg':fmt);
@@ -2382,6 +2516,11 @@
      state.shapes.forEach(s=> drawShapeItem(octx, s, s.id===state.activeShapeId));
    }
    state.texts.forEach(t=>{ if(t.id===state.editingTextId) return; drawTextItem(octx, t, t.id===state.activeTextId); });
+
+   /* Image clips render above everything so they can be moved / resized. */
+   if(state.clips && state.clips.length){
+     drawClipsInto(octx, state.activeClipId);
+   }
  }
   
  /* Bounding box helpers used by Smart Select. */
@@ -2755,7 +2894,24 @@
  function onDown(e){
    if(!state.img) return;
    const p=getCanvasPos(e);
-  
+
+   /* Image clip interaction — highest priority so users can always click
+      a clip to select/drag/resize even while other tools are active. */
+   if(state.clips && state.clips.length){
+     const hit = hitTestClip(p);
+     if(hit){
+       state.activeClipId = hit.clip.id;
+       state.clipDragging = true;
+       state.clipHandle = hit.handle;
+       state.clipStart = {x:hit.clip.x, y:hit.clip.y, w:hit.clip.w, h:hit.clip.h, mx:p.x, my:p.y};
+       if(hit.handle === 'move') state.clipDragOff = {dx:p.x-hit.clip.x, dy:p.y-hit.clip.y};
+       drawOverlay(); renderRail(); e.preventDefault(); return;
+     } else if(state.activeCategory==='clip'){
+       /* Clicking empty area in clip category deselects. */
+       state.activeClipId = null; drawOverlay(); renderRail();
+     }
+   }
+
    if(state.resizeRect){
      const handle=hitResizeHandle(p);
      if(handle){ e.preventDefault(); state.resizing=true; state.resizeHandle=handle; state.resizeStart={...state.resizeRect,mx:p.x,my:p.y}; return; }
@@ -2863,6 +3019,26 @@
  function onMove(e){
    if(!state.img) return;
    const p=getCanvasPos(e);
+   /* Clip drag / resize */
+   if(state.clipDragging && state.activeClipId){
+     const c = state.clips.find(x=>x.id===state.activeClipId);
+     if(c && state.clipStart){
+       const s = state.clipStart;
+       const dx = p.x - s.mx, dy = p.y - s.my;
+       if(state.clipHandle === 'move'){
+         c.x = s.x + dx; c.y = s.y + dy;
+       } else {
+         let nx=s.x, ny=s.y, nw=s.w, nh=s.h;
+         if(state.clipHandle==='br'){ nw=Math.max(20,s.w+dx); nh=Math.max(20,s.h+dy); }
+         if(state.clipHandle==='bl'){ nx=s.x+dx; nw=Math.max(20,s.w-dx); nh=Math.max(20,s.h+dy); }
+         if(state.clipHandle==='tr'){ ny=s.y+dy; nw=Math.max(20,s.w+dx); nh=Math.max(20,s.h-dy); }
+         if(state.clipHandle==='tl'){ nx=s.x+dx; ny=s.y+dy; nw=Math.max(20,s.w-dx); nh=Math.max(20,s.h-dy); }
+         c.x=nx; c.y=ny; c.w=nw; c.h=nh;
+       }
+       drawOverlay();
+     }
+     e.preventDefault(); return;
+   }
    if(state.resizing){ resizeFromDrag(p); drawOverlay(); e.preventDefault(); return; }
    if(state.cropDragging){ resizeCropFromDrag(p); drawOverlay(); e.preventDefault(); return; }
    if(state.textDragging && state.activeTextId){
@@ -2889,6 +3065,11 @@
    if(state.drawing){ paintLine(state.lastPt,p); state.lastPt=p; e.preventDefault(); }
  }
  function onUp(e){
+   if(state.clipDragging){
+     state.clipDragging=false; state.clipHandle=null; state.clipStart=null; state.clipDragOff=null;
+     drawOverlay(); renderRail();
+     return;
+   }
    if(state.resizing){ state.resizing=false; state.resizeHandle=null; renderContent(); return; }
    if(state.cropDragging){ state.cropDragging=false; state.cropHandle=null; return; }
    if(state.textDragging){
@@ -2986,7 +3167,14 @@
  function paintLine(a,b){
    const br=state.brush;
    const isErasing = state.activeTool==='eraser' || br.type==='eraser';
-  
+
+   /* Brush FX mode — paint applies a filter/effect to the underlying
+      image instead of painting a colour. Skip when erasing. */
+   if(!isErasing && state.brushFxMode && state.brushFxId){
+     paintFxSegment(a,b);
+     return;
+   }
+
    if(isErasing){
      /* Always erase from the paint layer with destination-out. This is the
         core of the layered eraser: no snapshots, no re-blits — just a
@@ -3486,6 +3674,26 @@
    const s=el(`<div class="section" data-section-id="${id}"><div class="section-title"><span>${title}</span><span class="sec-line"></span></div></div>`);
    s.appendChild(bodyEl); return s;
  }
+ /* Collapsible accordion for grouping many buttons (used by Filters &
+    Effects presets to prevent clutter). Body is hidden until the header
+    is clicked. */
+ function accordion(title, bodyEl, opts){
+   opts = opts || {};
+   const open = opts.open ? ' open' : '';
+   const wrap = el(`<div class="fx-accordion${open?' open':''}">
+     <button class="fx-acc-head" type="button">
+       <span class="fx-acc-title">${title}</span>
+       <span class="fx-acc-chev">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+       </span>
+     </button>
+     <div class="fx-acc-body"></div>
+   </div>`);
+   wrap.querySelector('.fx-acc-body').appendChild(bodyEl);
+   const head = wrap.querySelector('.fx-acc-head');
+   head.addEventListener('click',()=>{ wrap.classList.toggle('open'); });
+   return wrap;
+ }
  function makeToolBtn(label,icon,fn){
    const b=el(`<button class="tool-btn centered">${ICONS[icon]||''}<span>${label}</span></button>`);
    b.addEventListener('click',fn); return b;
@@ -3705,6 +3913,7 @@
    if(A||catId==='shape')     S.push(secShape());
    if(A||catId==='text')      S.push(secText());
    if(A||catId==='frame')     S.push(secFrame());
+   if(A||catId==='clip')      S.push(secClip());
    if(A||catId==='format')    S.push(secFormat());
    return S;
  }
@@ -3800,13 +4009,42 @@
    ];
    spec.forEach(s=>{
      const f=el(`<div class="field"><label>${s.l} <span class="val" data-val="${s.k}">${state.adj[s.k]}</span></label><input type="range" min="${s.min}" max="${s.max}" value="${state.adj[s.k]}" data-adj="${s.k}"/></div>`);
-     f.querySelector('input').addEventListener('input',e=>{ state.adj[s.k]=parseFloat(e.target.value); f.querySelector('[data-val]').textContent=e.target.value; });
+     f.querySelector('input').addEventListener('input',e=>{
+       /* Take a pre-adjust snapshot the FIRST time the user drags a slider so
+          the Reset button can revert the ACTUAL pixels (not just slider values). */
+       if(!state.preAdjustSnapshot && state.img){
+         try { state.preAdjustSnapshot = canvas.toDataURL('image/png'); } catch(_e){}
+       }
+       state.adj[s.k]=parseFloat(e.target.value);
+       f.querySelector('[data-val]').textContent=e.target.value;
+     });
      wrap.appendChild(f);
    });
    const row=el(`<div class="grid" style="margin-top:8px;"></div>`);
-   const applyB=el(`<button class="tool-btn centered">${ICONS.check}<span>Apply</span></button>`); applyB.addEventListener('click',applyPipeline);
+   const applyB=el(`<button class="tool-btn centered">${ICONS.check}<span>Apply</span></button>`);
+   applyB.addEventListener('click',()=>{
+     applyPipeline();
+     /* Once Apply is clicked the current pixels are the new baseline for
+        the next reset — clear the snapshot so a subsequent Reset zeros the
+        sliders without reverting the just-applied edit. */
+     state.preAdjustSnapshot = null;
+   });
    const resetB=el(`<button class="tool-btn centered">${ICONS.reset}<span>Reset</span></button>`);
-   resetB.addEventListener('click',()=>{ state.adj={brightness:0,contrast:0,saturation:0,hue:0,exposure:0,temperature:0,tint:0,vibrance:0,sharpen:0,blur:0,noise:0,vignette:0}; syncAdjustSliders(); });
+   resetB.addEventListener('click',()=>{
+     /* Zero every slider AND revert the canvas if we have a pre-adjust
+        snapshot (i.e. the user tweaked but hadn't hit Apply yet). This is
+        the fix for the "Reset does nothing" bug — previously only the
+        state.adj object was cleared but the pixels were left as-is if
+        Apply had been used, and the sliders never restored visually if
+        Apply hadn't been used. */
+     state.adj={brightness:0,contrast:0,saturation:0,hue:0,exposure:0,temperature:0,tint:0,vibrance:0,sharpen:0,blur:0,noise:0,vignette:0};
+     if(state.preAdjustSnapshot){
+       pushHistory();
+       loadDataUrlToCanvas(state.preAdjustSnapshot, false);
+       state.preAdjustSnapshot = null;
+     }
+     syncAdjustSliders();
+   });
    row.appendChild(applyB); row.appendChild(resetB); wrap.appendChild(row);
    return sectionShell('sec-adjust','Adjustments',wrap);
  }
@@ -3910,6 +4148,7 @@
   
  function secFilters(){
    const wrap=document.createElement('div');
+   /* --- Preset grid inside an accordion to avoid cluttering the panel --- */
    const g=el(`<div class="grid grid-3"></div>`);
    FILTERS.forEach(f=>{
      if(f.id==='none'){
@@ -3920,28 +4159,32 @@
      }
      g.appendChild(makeFxItem('filter', f.id, f.label, ()=>applyFilterPreset(f.id)));
    });
-   wrap.appendChild(g);
-  
+   wrap.appendChild(accordion(`Filter Presets (${FILTERS.length})`, g, {open:true}));
+
    /* Reset button — reverts every filter/effect in the current session
       without touching brushstrokes, live shapes, texts or the base image
       resolution. Only the filter/effect layer is cleared. */
    wrap.appendChild(_makeFxResetBtn());
   
-   /* Custom Color Filter */
-   wrap.appendChild(el(`<div class="section-title" style="margin-top:12px;"><span>Custom Color Filter</span><span class="sec-line"></span></div>`));
-   wrap.appendChild(secCustomColorFilter());
-  
+   /* Custom Color Filter — inside its own accordion */
+   const custom = document.createElement('div');
+   custom.appendChild(secCustomColorFilter());
+   wrap.appendChild(accordion('Custom Color Filter', custom));
+
    return sectionShell('sec-filters','Filters',wrap);
  }
   
  function secEffects(){
    const wrap=document.createElement('div');
+   /* Effect presets in an accordion */
    const g=el(`<div class="grid grid-3"></div>`);
    EFFECTS.forEach(f=>{ g.appendChild(makeFxItem('effect', f.id, f.label, ()=>applyEffect(f.id))); });
-   wrap.appendChild(g);
+   wrap.appendChild(accordion(`Effect Presets (${EFFECTS.length})`, g, {open:true}));
+
+   /* Duotone panel in its own accordion */
    const dt=el(`<div class="field" style="margin-top:10px;"><label>Duotone Colors</label><div class="row"><input type="color" id="dt-c1" value="#1a1a5e"/><input type="color" id="dt-c2" value="#ff9f43"/></div><button class="tool-btn centered" style="margin-top:6px;" id="dt-apply">Apply Duotone</button></div>`);
-   wrap.appendChild(dt);
    dt.querySelector('#dt-apply').addEventListener('click',()=>applyEffect('duotone',{c1:dt.querySelector('#dt-c1').value,c2:dt.querySelector('#dt-c2').value}));
+   wrap.appendChild(accordion('Duotone', dt));
   
    /* Reset button — same behaviour as the one in the Filters section. */
    wrap.appendChild(_makeFxResetBtn());
@@ -4117,9 +4360,25 @@
  function secBrush(){
    const wrap=document.createElement('div');
    const g=el(`<div class="grid grid-3"></div>`);
-   BRUSHES.forEach(br=>{ const b=el(`<button class="tool-btn centered">${ICONS[br.icon]||ICONS.brush}<span>${br.label}</span></button>`); if(state.brush.type===br.id)b.classList.add('active');
-     b.addEventListener('click',()=>{ state.brush.type=br.id; state.activeTool=(br.id==='eraser')?'eraser':'brush'; renderContent(); renderRail(); }); g.appendChild(b); });
+   BRUSHES.forEach(br=>{ const b=el(`<button class="tool-btn centered">${ICONS[br.icon]||ICONS.brush}<span>${br.label}</span></button>`); if(state.brush.type===br.id && !state.brushFxMode)b.classList.add('active');
+     b.addEventListener('click',()=>{
+       state.brush.type=br.id;
+       state.activeTool=(br.id==='eraser')?'eraser':'brush';
+       state.brushFxMode = null; state.brushFxId = null; /* leave FX mode when a regular brush is picked */
+       renderContent(); renderRail();
+     });
+     g.appendChild(b);
+   });
    wrap.appendChild(g);
+
+   /* --- Brush Effects (blur brush + every filter/effect as a brush) ---
+      Selecting one of these makes the brush apply the given
+      filter/effect to the pixels underneath the stroke instead of
+      painting a colour. The intensity slider follows the same
+      "0 = none, 1 = 100%, 10 = 1000%" scale as the regular filter/effect
+      strength sliders. */
+   const brushFxSelector = _buildBrushFxAccordion();
+   wrap.appendChild(brushFxSelector);
    const size=el(`<div class="field" style="margin-top:10px;"><label>Size <span class="val">${state.brush.size}px</span></label><input type="range" min="1" max="200" value="${state.brush.size}" data-brush="size"/></div>`);
    const op=el(`<div class="field"><label>Opacity <span class="val">${state.brush.opacity}%</span></label><input type="range" min="1" max="100" value="${state.brush.opacity}" data-brush="opacity"/></div>`);
    wrap.appendChild(size); wrap.appendChild(op);
@@ -4151,6 +4410,143 @@
    wrap.appendChild(bakeRow);
 
    return sectionShell('sec-brush','Brush & Paint',wrap);
+ }
+
+ /* Build the two accordions (Filters, Effects) that turn any preset into
+    a "brush" you can paint into the underlying image. Each preset gets
+    its own intensity slider using the same 0..10 scale as regular
+    filter/effect strength sliders. Selecting a preset activates FX-brush
+    mode; selecting a normal brush above deactivates it. */
+ function _buildBrushFxAccordion(){
+   const wrap = document.createElement('div');
+   wrap.appendChild(el(`<div class="section-title" style="margin-top:10px;"><span>Brush Effects</span><span class="sec-line"></span></div>`));
+   /* Filters as brushes */
+   const fBody = document.createElement('div');
+   const fGrid=el(`<div class="grid grid-3"></div>`);
+   FILTERS.filter(f=>f.id!=='none').forEach(f=>{
+     const isActive = state.brushFxMode==='filter' && state.brushFxId===f.id;
+     const b=el(`<button class="tool-btn centered ${isActive?'active':''}">${f.label}</button>`);
+     b.addEventListener('click',()=>{
+       state.brushFxMode='filter'; state.brushFxId=f.id;
+       state.activeTool='brush';
+       renderContent(); renderRail();
+     });
+     fGrid.appendChild(b);
+   });
+   fBody.appendChild(fGrid);
+   const fStr = el(`<div class="field" style="margin-top:8px;">
+     <label>Brush FX Strength <span class="val">${(state.brushFxStrength||1).toFixed(2)}</span></label>
+     <input type="range" min="0" max="10" step="0.1" value="${state.brushFxStrength||1}"/>
+     <div class="fx-pop-hint">0 = none · 1 = 100% · 10 = 1000%</div>
+   </div>`);
+   fStr.querySelector('input').addEventListener('input',e=>{
+     state.brushFxStrength = parseFloat(e.target.value)||1;
+     fStr.querySelector('.val').textContent = state.brushFxStrength.toFixed(2);
+   });
+   fBody.appendChild(fStr);
+   wrap.appendChild(accordion('Filters as Brush', fBody));
+
+   /* Effects as brushes — including a dedicated "Blur" brush entry */
+   const eBody = document.createElement('div');
+   const eGrid=el(`<div class="grid grid-3"></div>`);
+   const blurBrush=[{id:'blur', label:'Blur'}]; // exposed as its own entry (matches user request)
+   blurBrush.concat(EFFECTS).forEach(f=>{
+     const isActive = state.brushFxMode==='effect' && state.brushFxId===f.id;
+     const b=el(`<button class="tool-btn centered ${isActive?'active':''}">${f.label}</button>`);
+     b.addEventListener('click',()=>{
+       state.brushFxMode='effect'; state.brushFxId=f.id;
+       state.activeTool='brush';
+       renderContent(); renderRail();
+     });
+     eGrid.appendChild(b);
+   });
+   eBody.appendChild(eGrid);
+   const eStr = el(`<div class="field" style="margin-top:8px;">
+     <label>Brush FX Strength <span class="val">${(state.brushFxStrength||1).toFixed(2)}</span></label>
+     <input type="range" min="0" max="10" step="0.1" value="${state.brushFxStrength||1}"/>
+     <div class="fx-pop-hint">0 = none · 1 = 100% · 10 = 1000%</div>
+   </div>`);
+   eStr.querySelector('input').addEventListener('input',e=>{
+     state.brushFxStrength = parseFloat(e.target.value)||1;
+     eStr.querySelector('.val').textContent = state.brushFxStrength.toFixed(2);
+   });
+   eBody.appendChild(eStr);
+   wrap.appendChild(accordion('Effects as Brush', eBody));
+
+   const clearB = el(`<button class="tool-btn centered" style="margin-top:6px;">Clear Brush Effect (use regular brush)</button>`);
+   clearB.addEventListener('click',()=>{
+     state.brushFxMode = null; state.brushFxId = null;
+     renderContent(); renderRail();
+   });
+   wrap.appendChild(clearB);
+   return wrap;
+ }
+
+ /* Apply a filter/effect to a single elliptical stroke region of the
+    base canvas. Called from paintLine() when state.brushFxMode is set.
+    We take a snapshot of the affected region, run the filter/effect on
+    it, then blit the result back through a soft-edged elliptical mask
+    so successive strokes accumulate naturally. */
+ function paintFxSegment(a, b){
+   if(!state.brushFxMode || !state.brushFxId) return;
+   const br = state.brush;
+   const rad = Math.max(3, Math.round(br.size/2));
+   const opacity = Math.max(0.02, (br.opacity||100)/100);
+   // Compute bounding rect covering the segment plus the brush radius.
+   const minX = Math.max(0, Math.floor(Math.min(a.x,b.x) - rad - 2));
+   const minY = Math.max(0, Math.floor(Math.min(a.y,b.y) - rad - 2));
+   const maxX = Math.min(canvas.width,  Math.ceil(Math.max(a.x,b.x) + rad + 2));
+   const maxY = Math.min(canvas.height, Math.ceil(Math.max(a.y,b.y) + rad + 2));
+   const w = maxX - minX, h = maxY - minY;
+   if(w<=1 || h<=1) return;
+   /* 1) Snapshot the affected region. */
+   const src = document.createElement('canvas');
+   src.width = w; src.height = h;
+   src.getContext('2d').drawImage(canvas, minX, minY, w, h, 0, 0, w, h);
+   /* 2) Run filter/effect on the snapshot. */
+   const S = state.brushFxStrength || 1;
+   const sctx = src.getContext('2d');
+   if(state.brushFxMode === 'filter'){
+     const id = sctx.getImageData(0,0,w,h);
+     _applyFilterToImageData(id, state.brushFxId, S);
+     sctx.putImageData(id,0,0);
+   } else if(state.brushFxMode === 'effect'){
+     if(state.brushFxId === 'blur'){
+       const t = document.createElement('canvas'); t.width = w; t.height = h;
+       const tc = t.getContext('2d');
+       tc.filter = `blur(${Math.max(1, Math.round(6*S))}px)`;
+       tc.drawImage(src, 0, 0);
+       sctx.clearRect(0,0,w,h);
+       sctx.drawImage(t,0,0);
+     } else {
+       _applyEffectToCanvas(src, state.brushFxId, S);
+     }
+   }
+   /* 3) Build a mask canvas with the stroke shape (round-cap segment
+      approximated by a thick line + end circles). */
+   const mask = document.createElement('canvas');
+   mask.width = w; mask.height = h;
+   const mctx = mask.getContext('2d');
+   mctx.fillStyle = '#fff'; mctx.strokeStyle = '#fff';
+   mctx.lineCap = 'round'; mctx.lineJoin = 'round';
+   mctx.lineWidth = rad * 2;
+   mctx.beginPath();
+   if(a.x===b.x && a.y===b.y){
+     mctx.arc(a.x - minX, a.y - minY, rad, 0, Math.PI*2);
+     mctx.fill();
+   } else {
+     mctx.moveTo(a.x - minX, a.y - minY);
+     mctx.lineTo(b.x - minX, b.y - minY);
+     mctx.stroke();
+   }
+   mctx.globalCompositeOperation = 'source-in';
+   mctx.drawImage(src, 0, 0);
+   /* 4) Blit the masked filtered region back onto the base canvas with
+      the brush's opacity. */
+   ctx.save();
+   ctx.globalAlpha = opacity;
+   ctx.drawImage(mask, minX, minY);
+   ctx.restore();
  }
   
  function secShape(){
@@ -5341,7 +5737,590 @@
 
    return sectionShell('sec-frame','Frame & Border',wrap);
  }
-  
+
+ /* ========================================================================
+    IMAGE CLIPPING (floating raster clips on top of the canvas)
+    ------------------------------------------------------------------------
+    A clip is a movable/resizable image object rendered above the base
+    canvas. Clips support:
+      - move & resize by dragging handles on the overlay
+      - custom borders (solid colour) with configurable thickness
+      - rounded corners
+      - per-clip filter/effect (with strength slider) that is baked when
+        the clip is composited (into overlay for preview, and export)
+      - selection through the list or by clicking on canvas
+    ======================================================================== */
+ function _clipId(){ return 'C'+Date.now()+'_'+Math.floor(Math.random()*1000); }
+ function _defaultClipAdj(){
+   return {brightness:0,contrast:0,saturation:0,hue:0,exposure:0,
+           temperature:0,tint:0,vibrance:0,sharpen:0,blur:0,noise:0,vignette:0};
+ }
+ function addClipFromDataUrl(dataUrl, opts){
+   opts = opts || {};
+   const img = new Image();
+   img.onload = ()=>{
+     const maxW = Math.min(canvas.width * 0.6, img.naturalWidth);
+     const scale = maxW / img.naturalWidth;
+     const w = Math.max(40, Math.round(img.naturalWidth * scale));
+     const h = Math.max(40, Math.round(img.naturalHeight * scale));
+     const clip = {
+       id: _clipId(),
+       imgSrc: dataUrl,
+       name: opts.name || `Clip ${state.clips.length+1}`,
+       x: Math.round((canvas.width - w)/2),
+       y: Math.round((canvas.height - h)/2),
+       w, h,
+       borderColor: '#ffffff',
+       borderWidth: 0,
+       radius: 0,
+       filterId: null,
+       effectId: null,
+       strength: 1,
+       adj: _defaultClipAdj(),
+       _img: img,
+     };
+     pushHistory();
+     state.clips.push(clip);
+     state.activeClipId = clip.id;
+     state.activeCategory = 'clip';
+     drawOverlay(); renderContent(); renderRail();
+   };
+   img.src = dataUrl;
+ }
+ function getActiveClip(){ return state.clips.find(c=>c.id===state.activeClipId) || null; }
+ /* Ensure each clip has its _img HTMLImageElement loaded (used after undo /
+    when redrawing without adding). */
+ function ensureClipImages(cb){
+   const pending = state.clips.filter(c=>!c._img || !c._img.complete);
+   if(pending.length === 0){ if(cb) cb(); return; }
+   let left = pending.length;
+   pending.forEach(c=>{
+     const im = new Image();
+     im.onload = im.onerror = ()=>{ c._img = im; if(--left===0 && cb) cb(); };
+     im.src = c.imgSrc;
+   });
+ }
+
+ /* Draw all clips onto the given 2D context. If highlightId is set,
+    that clip gets selection handles. Used for both overlay preview and
+    bake/export via drawClipsInto(ctx). */
+ function drawClipsInto(targetCtx, highlightId){
+   if(!state.clips || state.clips.length===0) return;
+   state.clips.forEach(c=>{
+     if(!c._img || !c._img.complete || c._img.naturalWidth===0) return;
+     targetCtx.save();
+     const {x,y,w,h} = c;
+     /* Draw the clip image into an offscreen canvas so we can apply per-
+        clip filter/effect/adjustments without affecting the target. */
+     const off = document.createElement('canvas');
+     off.width = Math.max(1, Math.round(w));
+     off.height = Math.max(1, Math.round(h));
+     const octx2 = off.getContext('2d');
+     octx2.drawImage(c._img, 0, 0, off.width, off.height);
+     /* Apply per-clip adjustments and filter/effect using shared helpers. */
+     try{
+       const anyAdj = c.adj && Object.values(c.adj).some(v=>v!==0);
+       if(anyAdj){
+         const id = octx2.getImageData(0,0,off.width,off.height);
+         applyAdjustments(id, c.adj);
+         octx2.putImageData(id,0,0);
+         const {blur,sharpen,vignette}=c.adj;
+         if(blur>0){
+           const t=document.createElement('canvas'); t.width=off.width; t.height=off.height;
+           const tc=t.getContext('2d'); tc.filter=`blur(${Math.max(1,Math.round(blur/10))}px)`; tc.drawImage(off,0,0);
+           octx2.clearRect(0,0,off.width,off.height); octx2.drawImage(t,0,0);
+         }
+         if(vignette>0){
+           const g=octx2.createRadialGradient(off.width/2,off.height/2,Math.min(off.width,off.height)*0.3,off.width/2,off.height/2,Math.max(off.width,off.height)*0.75);
+           g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,`rgba(0,0,0,${vignette/100})`);
+           octx2.fillStyle=g; octx2.fillRect(0,0,off.width,off.height);
+         }
+       }
+       if(c.filterId){
+         const id = octx2.getImageData(0,0,off.width,off.height);
+         _applyFilterToImageData(id, c.filterId, c.strength||1);
+         octx2.putImageData(id,0,0);
+       }
+       if(c.effectId){
+         _applyEffectToCanvas(off, c.effectId, c.strength||1);
+       }
+     } catch(_e){}
+     targetCtx.save();
+     /* Rounded-corner clipping */
+     if(c.radius > 0){
+       _roundRectPath(targetCtx, x, y, w, h, Math.min(c.radius, Math.min(w,h)/2));
+       targetCtx.clip();
+     }
+     targetCtx.drawImage(off, x, y, w, h);
+     targetCtx.restore();
+     /* Border */
+     if(c.borderWidth > 0){
+       targetCtx.strokeStyle = c.borderColor || '#ffffff';
+       targetCtx.lineWidth = c.borderWidth;
+       targetCtx.lineJoin = 'round';
+       if(c.radius > 0){
+         _roundRectPath(targetCtx, x, y, w, h, Math.min(c.radius, Math.min(w,h)/2));
+         targetCtx.stroke();
+       } else {
+         targetCtx.strokeRect(x, y, w, h);
+       }
+     }
+     /* Selection outline + handles when this clip is active — only on the overlay. */
+     if(highlightId === c.id){
+       targetCtx.strokeStyle = getAccent();
+       targetCtx.lineWidth = 2;
+       targetCtx.setLineDash([6,4]);
+       targetCtx.strokeRect(x, y, w, h);
+       targetCtx.setLineDash([]);
+       const hs = 10;
+       ['tl','tr','bl','br'].forEach(k=>{
+         const p = _clipHandlePt(c, k);
+         targetCtx.fillStyle = '#fff';
+         targetCtx.fillRect(p.x - hs/2, p.y - hs/2, hs, hs);
+         targetCtx.strokeStyle = getAccent();
+         targetCtx.strokeRect(p.x - hs/2, p.y - hs/2, hs, hs);
+       });
+     }
+     targetCtx.restore();
+   });
+ }
+ function _roundRectPath(c,x,y,w,h,r){
+   c.beginPath();
+   c.moveTo(x+r,y);
+   c.lineTo(x+w-r,y);
+   c.quadraticCurveTo(x+w,y,x+w,y+r);
+   c.lineTo(x+w,y+h-r);
+   c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+   c.lineTo(x+r,y+h);
+   c.quadraticCurveTo(x,y+h,x,y+h-r);
+   c.lineTo(x,y+r);
+   c.quadraticCurveTo(x,y,x+r,y);
+   c.closePath();
+ }
+ function _clipHandlePt(c, key){
+   switch(key){
+     case 'tl': return {x:c.x, y:c.y};
+     case 'tr': return {x:c.x+c.w, y:c.y};
+     case 'bl': return {x:c.x, y:c.y+c.h};
+     case 'br': return {x:c.x+c.w, y:c.y+c.h};
+   }
+   return {x:c.x, y:c.y};
+ }
+ function hitTestClip(p){
+   // Iterate top-most first
+   for(let i=state.clips.length-1;i>=0;i--){
+     const c = state.clips[i];
+     const hs = 12;
+     if(state.activeClipId === c.id){
+       for(const k of ['tl','tr','bl','br']){
+         const hp = _clipHandlePt(c,k);
+         if(Math.abs(p.x-hp.x)<=hs && Math.abs(p.y-hp.y)<=hs){
+           return {clip:c, handle:k};
+         }
+       }
+     }
+     if(p.x>=c.x && p.x<=c.x+c.w && p.y>=c.y && p.y<=c.y+c.h){
+       return {clip:c, handle:'move'};
+     }
+   }
+   return null;
+ }
+
+ /* Apply a filter preset directly to an ImageData (used for per-clip
+    rendering). Mirrors applyFilterPreset but operates in-place on the
+    provided pixel buffer. */
+ function _applyFilterToImageData(imgd, filterId, strength){
+   const ops = getFilterOps(filterId);
+   if(!ops || filterId==='none') return;
+   const src = new Uint8ClampedArray(imgd.data);
+   const d = imgd.data;
+   applyAdjustments(imgd, ops.adjustments||{});
+   if(ops.tone){
+     const [tr,tg,tb,ta] = ops.tone;
+     for(let i=0;i<d.length;i+=4){
+       d[i]  =clamp(d[i]  *(1-ta)+tr*ta);
+       d[i+1]=clamp(d[i+1]*(1-ta)+tg*ta);
+       d[i+2]=clamp(d[i+2]*(1-ta)+tb*ta);
+     }
+   }
+   if(ops.builtin){
+     for(let i=0;i<d.length;i+=4){
+       const r=d[i],g=d[i+1],b=d[i+2];
+       if(ops.builtin==='grayscale'){ const gr=0.299*r+0.587*g+0.114*b; d[i]=d[i+1]=d[i+2]=gr; }
+       else if(ops.builtin==='sepia'){ d[i]=clamp(r*.393+g*.769+b*.189); d[i+1]=clamp(r*.349+g*.686+b*.168); d[i+2]=clamp(r*.272+g*.534+b*.131); }
+       else if(ops.builtin==='invert'){ d[i]=255-r; d[i+1]=255-g; d[i+2]=255-b; }
+     }
+   }
+   if(strength !== 1){
+     const S = strength;
+     for(let i=0;i<d.length;i+=4){
+       d[i]  =clamp(src[i]  +(d[i]  -src[i]  )*S);
+       d[i+1]=clamp(src[i+1]+(d[i+1]-src[i+1])*S);
+       d[i+2]=clamp(src[i+2]+(d[i+2]-src[i+2])*S);
+     }
+   }
+ }
+ /* Simple effect emulation for clips using a tiny subset of effects that
+    are safe to run on the clip's local canvas without needing global
+    canvas state. For unsupported effects we no-op. */
+ function _applyEffectToCanvas(cv, effectId, strength){
+   const c = cv.getContext('2d');
+   const w = cv.width, h = cv.height;
+   let imgd;
+   try { imgd = c.getImageData(0,0,w,h); } catch(_e){ return; }
+   const d = imgd.data;
+   const src = new Uint8ClampedArray(d);
+   const S = Math.max(0, strength||1);
+   switch(effectId){
+     case 'pixelate': {
+       const size = Math.max(2, Math.round(6*S));
+       const tmp = document.createElement('canvas');
+       tmp.width = Math.max(1, Math.floor(w/size));
+       tmp.height = Math.max(1, Math.floor(h/size));
+       const tc = tmp.getContext('2d');
+       tc.imageSmoothingEnabled = false;
+       tc.drawImage(cv,0,0,tmp.width,tmp.height);
+       c.imageSmoothingEnabled = false;
+       c.clearRect(0,0,w,h);
+       c.drawImage(tmp,0,0,w,h);
+       c.imageSmoothingEnabled = true;
+       return;
+     }
+     case 'emboss': {
+       for(let y=1;y<h-1;y++){
+         for(let x=1;x<w-1;x++){
+           const i=(y*w+x)*4, p=((y-1)*w+(x-1))*4;
+           d[i]  =clamp(128+(src[i]  -src[p]  )*S);
+           d[i+1]=clamp(128+(src[i+1]-src[p+1])*S);
+           d[i+2]=clamp(128+(src[i+2]-src[p+2])*S);
+         }
+       }
+       c.putImageData(imgd,0,0); return;
+     }
+     case 'threshold': {
+       const T=128;
+       for(let i=0;i<d.length;i+=4){
+         const gr=0.299*src[i]+0.587*src[i+1]+0.114*src[i+2];
+         const v = gr>T?255:0;
+         d[i]=d[i+1]=d[i+2]=v;
+       }
+       c.putImageData(imgd,0,0); return;
+     }
+     case 'posterize': {
+       const levels = Math.max(2, Math.round(6/Math.max(0.1,S)));
+       const step = 255/(levels-1);
+       for(let i=0;i<d.length;i+=4){
+         d[i]  =Math.round(src[i]  /step)*step;
+         d[i+1]=Math.round(src[i+1]/step)*step;
+         d[i+2]=Math.round(src[i+2]/step)*step;
+       }
+       c.putImageData(imgd,0,0); return;
+     }
+     case 'scanlines': {
+       for(let y=0;y<h;y+=2){
+         for(let x=0;x<w;x++){
+           const i=(y*w+x)*4;
+           d[i]=d[i]*0.6; d[i+1]=d[i+1]*0.6; d[i+2]=d[i+2]*0.6;
+         }
+       }
+       c.putImageData(imgd,0,0); return;
+     }
+     case 'solarize': {
+       const T=128;
+       for(let i=0;i<d.length;i+=4){
+         d[i]  = src[i]  <T?src[i]  :255-src[i];
+         d[i+1]= src[i+1]<T?src[i+1]:255-src[i+1];
+         d[i+2]= src[i+2]<T?src[i+2]:255-src[i+2];
+       }
+       c.putImageData(imgd,0,0); return;
+     }
+     case 'sharpenfx': {
+       // 3x3 sharpen kernel
+       const k=[0,-1,0,-1,5,-1,0,-1,0];
+       for(let y=1;y<h-1;y++){
+         for(let x=1;x<w-1;x++){
+           let r=0,g=0,b=0;
+           for(let ky=-1;ky<=1;ky++){
+             for(let kx=-1;kx<=1;kx++){
+               const p=((y+ky)*w+(x+kx))*4, kv=k[(ky+1)*3+(kx+1)];
+               r+=src[p]*kv; g+=src[p+1]*kv; b+=src[p+2]*kv;
+             }
+           }
+           const i=(y*w+x)*4;
+           d[i]  =clamp(src[i]  +(r-src[i]  )*S);
+           d[i+1]=clamp(src[i+1]+(g-src[i+1])*S);
+           d[i+2]=clamp(src[i+2]+(b-src[i+2])*S);
+         }
+       }
+       c.putImageData(imgd,0,0); return;
+     }
+   }
+ }
+
+ /* ---------- The Image Clipping tool panel ---------- */
+ function secClip(){
+   const wrap=document.createElement('div');
+   /* Top action row: open the add-clip modal, remove selected, clear all. */
+   const bar=el(`<div class="grid grid-2-mobile"></div>`);
+   const addB=el(`<button class="tool-btn centered">${ICONS.frame||''}<span>Add Image Clip</span></button>`);
+   addB.addEventListener('click',()=>openClipModal('upload'));
+   bar.appendChild(addB);
+   const clearB=el(`<button class="tool-btn centered">${ICONS.reset||''}<span>Clear All Clips</span></button>`);
+   clearB.addEventListener('click',()=>{
+     if(state.clips.length===0) return;
+     if(!confirm('Remove ALL image clips? This cannot be undone easily.')) return;
+     pushHistory();
+     state.clips = []; state.activeClipId = null;
+     drawOverlay(); renderContent(); renderRail();
+   });
+   bar.appendChild(clearB);
+   wrap.appendChild(bar);
+
+   /* Bake button: rasterize all clips into the base canvas image. Once
+      baked they become part of the pixel image and lose per-clip editing. */
+   const bakeB=el(`<button class="tool-btn centered" style="margin-top:6px;">${ICONS.check||''}<span>Bake Clips into Image</span></button>`);
+   bakeB.addEventListener('click',()=>{
+     if(state.clips.length===0) return;
+     pushHistory();
+     drawClipsInto(ctx, null);
+     state.clips = []; state.activeClipId = null;
+     drawOverlay(); renderContent(); renderRail();
+   });
+   wrap.appendChild(bakeB);
+
+   /* Clip list — click to select. Selecting also shows the per-clip
+      controls below (formatting, filter, effect, adjustments, border,
+      corner-radius). */
+   wrap.appendChild(el(`<div class="section-title" style="margin-top:12px;"><span>Clips (${state.clips.length})</span><span class="sec-line"></span></div>`));
+   const list=el(`<div class="clip-list"></div>`);
+   if(state.clips.length===0){
+     list.appendChild(el(`<div class="hint" style="padding:8px 4px;">No clips yet. Click "Add Image Clip" above to place an image on top of the canvas. You can then drag it, resize with the corner handles, add borders and apply filters/effects per-clip.</div>`));
+   }
+   state.clips.forEach(c=>{
+     const it=el(`<div class="clip-list-item ${c.id===state.activeClipId?'active':''}">
+       <div class="lp-thumb" style="background-image:url('${c.imgSrc.replace(/'/g,"\\'")}');"></div>
+       <div class="lp-info"><div class="lp-name">${escapeHtml(c.name)}</div><div class="lp-meta">${c.w}×${c.h}px${c.filterId?' · '+c.filterId:''}${c.effectId?' · '+c.effectId:''}</div></div>
+       <button class="lp-del" title="Remove clip">×</button>
+     </div>`);
+     it.addEventListener('click',ev=>{
+       if(ev.target.classList.contains('lp-del')) return;
+       state.activeClipId = c.id; drawOverlay(); renderRail();
+     });
+     it.querySelector('.lp-del').addEventListener('click',ev=>{
+       ev.stopPropagation();
+       pushHistory();
+       state.clips = state.clips.filter(x=>x.id!==c.id);
+       if(state.activeClipId===c.id) state.activeClipId=null;
+       drawOverlay(); renderContent(); renderRail();
+     });
+     list.appendChild(it);
+   });
+   wrap.appendChild(list);
+
+   /* Per-clip controls only render when a clip is selected. */
+   const active = getActiveClip();
+   if(active){
+     wrap.appendChild(el(`<div class="section-title" style="margin-top:12px;"><span>Selected: ${escapeHtml(active.name)}</span><span class="sec-line"></span></div>`));
+
+     /* Position / size numeric editors */
+     const pos=el(`<div class="field"><label>Position (x, y)</label>
+       <div class="row"><input type="number" id="cl-x" value="${active.x}"/><input type="number" id="cl-y" value="${active.y}"/></div></div>`);
+     pos.querySelector('#cl-x').addEventListener('change',e=>{ active.x=parseInt(e.target.value)||0; drawOverlay(); renderRail(); });
+     pos.querySelector('#cl-y').addEventListener('change',e=>{ active.y=parseInt(e.target.value)||0; drawOverlay(); renderRail(); });
+     wrap.appendChild(pos);
+     const sz=el(`<div class="field"><label>Size (w, h)</label>
+       <div class="row"><input type="number" id="cl-w" value="${active.w}" min="10"/><input type="number" id="cl-h" value="${active.h}" min="10"/></div></div>`);
+     sz.querySelector('#cl-w').addEventListener('change',e=>{ active.w=Math.max(10,parseInt(e.target.value)||10); drawOverlay(); renderRail(); });
+     sz.querySelector('#cl-h').addEventListener('change',e=>{ active.h=Math.max(10,parseInt(e.target.value)||10); drawOverlay(); renderRail(); });
+     wrap.appendChild(sz);
+
+     /* Border controls */
+     const borderAcc = document.createElement('div');
+     const bColor=el(`<div class="field"><label>Border Color</label><input type="color" value="${active.borderColor}"/></div>`);
+     bColor.querySelector('input').addEventListener('input',e=>{ active.borderColor=e.target.value; drawOverlay(); });
+     borderAcc.appendChild(bColor);
+     const bW=el(`<div class="field"><label>Border Width <span class="val">${active.borderWidth}px</span></label>
+       <input type="range" min="0" max="60" value="${active.borderWidth}"/></div>`);
+     bW.querySelector('input').addEventListener('input',e=>{
+       active.borderWidth=parseInt(e.target.value)||0;
+       bW.querySelector('.val').textContent = active.borderWidth+'px';
+       drawOverlay();
+     });
+     borderAcc.appendChild(bW);
+     const bR=el(`<div class="field"><label>Corner Radius <span class="val">${active.radius}px</span></label>
+       <input type="range" min="0" max="200" value="${active.radius}"/></div>`);
+     bR.querySelector('input').addEventListener('input',e=>{
+       active.radius=parseInt(e.target.value)||0;
+       bR.querySelector('.val').textContent = active.radius+'px';
+       drawOverlay();
+     });
+     borderAcc.appendChild(bR);
+     wrap.appendChild(accordion('Border & Corners', borderAcc, {open:true}));
+
+     /* Per-clip filters accordion */
+     const fPanel = document.createElement('div');
+     const fGrid=el(`<div class="grid grid-3"></div>`);
+     FILTERS.forEach(f=>{
+       const b=el(`<button class="tool-btn centered ${active.filterId===f.id?'active':''}">${f.label}</button>`);
+       b.addEventListener('click',()=>{
+         active.filterId = (f.id==='none') ? null : f.id;
+         drawOverlay(); renderRail();
+       });
+       fGrid.appendChild(b);
+     });
+     fPanel.appendChild(fGrid);
+     const fStr = el(`<div class="field" style="margin-top:8px;"><label>Filter/Effect Strength <span class="val">${(active.strength||1).toFixed(2)}</span></label>
+       <input type="range" min="0" max="10" step="0.1" value="${active.strength||1}"/></div>`);
+     fStr.querySelector('input').addEventListener('input',e=>{
+       active.strength = parseFloat(e.target.value)||1;
+       fStr.querySelector('.val').textContent = active.strength.toFixed(2);
+       drawOverlay();
+     });
+     fPanel.appendChild(fStr);
+     wrap.appendChild(accordion('Filters (this clip)', fPanel));
+
+     /* Per-clip effects accordion */
+     const eePanel = document.createElement('div');
+     const eGrid=el(`<div class="grid grid-3"></div>`);
+     const noneEff=el(`<button class="tool-btn centered ${!active.effectId?'active':''}">Original</button>`);
+     noneEff.addEventListener('click',()=>{ active.effectId=null; drawOverlay(); renderRail(); });
+     eGrid.appendChild(noneEff);
+     EFFECTS.forEach(f=>{
+       const b=el(`<button class="tool-btn centered ${active.effectId===f.id?'active':''}">${f.label}</button>`);
+       b.addEventListener('click',()=>{ active.effectId = f.id; drawOverlay(); renderRail(); });
+       eGrid.appendChild(b);
+     });
+     eePanel.appendChild(eGrid);
+     eePanel.appendChild(el('<div class="hint">Uses the Strength slider in the Filters section above.</div>'));
+     wrap.appendChild(accordion('Effects (this clip)', eePanel));
+
+     /* Per-clip adjustments accordion */
+     const aPanel = document.createElement('div');
+     const adjSpec=[
+       {k:'brightness',l:'Brightness',min:-100,max:100},
+       {k:'contrast',l:'Contrast',min:-100,max:100},
+       {k:'saturation',l:'Saturation',min:-100,max:100},
+       {k:'hue',l:'Hue',min:-180,max:180},
+       {k:'blur',l:'Blur',min:0,max:100},
+       {k:'vignette',l:'Vignette',min:0,max:100},
+     ];
+     adjSpec.forEach(s=>{
+       const f=el(`<div class="field"><label>${s.l} <span class="val">${active.adj[s.k]}</span></label>
+         <input type="range" min="${s.min}" max="${s.max}" value="${active.adj[s.k]}"/></div>`);
+       f.querySelector('input').addEventListener('input',e=>{
+         active.adj[s.k]=parseFloat(e.target.value);
+         f.querySelector('.val').textContent = e.target.value;
+         drawOverlay();
+       });
+       aPanel.appendChild(f);
+     });
+     const resetA=el(`<button class="tool-btn centered" style="margin-top:6px;">${ICONS.reset||''}<span>Reset Clip Adjustments</span></button>`);
+     resetA.addEventListener('click',()=>{
+       active.adj = _defaultClipAdj();
+       drawOverlay(); renderRail();
+     });
+     aPanel.appendChild(resetA);
+     wrap.appendChild(accordion('Adjustments (this clip)', aPanel));
+
+     /* Arrange & delete */
+     const arr=el(`<div class="grid" style="margin-top:6px;"></div>`);
+     const front=el(`<button class="tool-btn centered">Bring to Front</button>`);
+     front.addEventListener('click',()=>{
+       const idx=state.clips.findIndex(c=>c.id===active.id);
+       if(idx>=0){ pushHistory(); const [it]=state.clips.splice(idx,1); state.clips.push(it); drawOverlay(); renderRail(); }
+     });
+     const back=el(`<button class="tool-btn centered">Send to Back</button>`);
+     back.addEventListener('click',()=>{
+       const idx=state.clips.findIndex(c=>c.id===active.id);
+       if(idx>=0){ pushHistory(); const [it]=state.clips.splice(idx,1); state.clips.unshift(it); drawOverlay(); renderRail(); }
+     });
+     arr.appendChild(front); arr.appendChild(back);
+     wrap.appendChild(arr);
+     const del=el(`<button class="tool-btn centered" style="margin-top:6px; color:var(--danger);">Delete Clip</button>`);
+     del.addEventListener('click',()=>{
+       pushHistory();
+       state.clips = state.clips.filter(c=>c.id!==active.id);
+       state.activeClipId = null;
+       drawOverlay(); renderContent(); renderRail();
+     });
+     wrap.appendChild(del);
+   }
+   return sectionShell('sec-clip','Image Clipping',wrap);
+ }
+
+ /* ---------- Image Clipping modal wiring ---------- */
+ function openClipModal(tab){
+   const m = document.getElementById('clip-modal');
+   m.classList.add('open');
+   switchClipTab(tab || 'upload');
+   renderClipSavedThumbs();
+ }
+ function closeClipModal(){
+   document.getElementById('clip-modal').classList.remove('open');
+ }
+ function switchClipTab(tab){
+   document.querySelectorAll('[data-cliptab]').forEach(b=>b.classList.toggle('active', b.dataset.cliptab===tab));
+   document.getElementById('clip-tab-upload').style.display = tab==='upload'?'':'none';
+   document.getElementById('clip-tab-saved').style.display  = tab==='saved'?'':'none';
+ }
+ function renderClipSavedThumbs(){
+   const wrap = document.getElementById('clip-saved-thumbs');
+   if(!wrap) return;
+   wrap.innerHTML = '';
+   if(!state.savedImages || state.savedImages.length===0){
+     wrap.appendChild(el(`<div class="hint" style="grid-column:1/-1;padding:12px; text-align:center;">No saved images yet. Upload one from the Upload tab — it will appear here for reuse.</div>`));
+     return;
+   }
+   state.savedImages.forEach((im, idx)=>{
+     const t = el(`<div class="clip-thumb" title="Add as clip">
+       <img src="${im.src}" alt="${escapeAttr(im.name||'image')}"/>
+       <button class="rm" title="Remove">×</button>
+     </div>`);
+     t.addEventListener('click',ev=>{
+       if(ev.target.classList.contains('rm')) return;
+       addClipFromDataUrl(im.src, {name: im.name || `Clip ${state.clips.length+1}`});
+       closeClipModal();
+     });
+     t.querySelector('.rm').addEventListener('click',ev=>{
+       ev.stopPropagation();
+       state.savedImages.splice(idx,1);
+       renderClipSavedThumbs();
+     });
+     wrap.appendChild(t);
+   });
+ }
+ (function bindClipModal(){
+   const cmodal = document.getElementById('clip-modal');
+   if(!cmodal) return;
+   document.querySelectorAll('[data-cliptab]').forEach(b=>{
+     b.addEventListener('click',()=>switchClipTab(b.dataset.cliptab));
+   });
+   cmodal.addEventListener('click', e=>{
+     if(e.target === cmodal || e.target.dataset.clipmodal==='cancel') closeClipModal();
+   });
+   const cin = document.getElementById('clip-file-input');
+   document.getElementById('clip-upload-btn').addEventListener('click',()=> cin.click());
+   cin.addEventListener('change', e=>{
+     const files = Array.from(e.target.files||[]);
+     if(files.length===0) return;
+     files.forEach((f,i)=>{
+       const r = new FileReader();
+       r.onload = ev=>{
+         const src = ev.target.result;
+         state.savedImages.push({src, name:f.name || `Image ${state.savedImages.length+1}`});
+         if(i === files.length-1){
+           /* Add the LAST uploaded file to the canvas immediately for a
+              one-click "upload + drop on canvas" flow. */
+           addClipFromDataUrl(src, {name:f.name || `Clip ${state.clips.length+1}`});
+           closeClipModal();
+         }
+       };
+       r.readAsDataURL(f);
+     });
+     e.target.value='';
+   });
+ })();
+
  /* ========================================================================
     CATEGORY / DROPDOWN
     ======================================================================== */
@@ -5350,7 +6329,7 @@
    state.activeCategory=id;
    if(id==='brush'){ if(state.activeTool!=='eraser'&&state.activeTool!=='picker')state.activeTool='brush'; }
    else if(id==='crop'){}
-   else if(id!=='shape'&&id!=='text'&&id!=='format'){ if(state.activeTool!=='crop-tool'&&state.activeTool!=='resize-tool')state.activeTool=null; }
+   else if(id!=='shape'&&id!=='text'&&id!=='format'&&id!=='clip'){ if(state.activeTool!=='crop-tool'&&state.activeTool!=='resize-tool')state.activeTool=null; }
    updateCatSwitcherLabels(); renderContent(); renderRail();
  }
  function updateCatSwitcherLabels(){
@@ -6041,6 +7020,7 @@
    }catch(e){ /* No previous session or DB error: fresh start. */ }
  }
  </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
